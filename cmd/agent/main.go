@@ -32,10 +32,21 @@ func main() {
 
 	model := client.GenerativeModel("gemini-3.5-flash")
 
-	fmt.Println("🚀 Server đang khởi động...")
-	fmt.Println("🧠 Đang test kết nối tới Bộ não (LLM)...")
+	model.SystemInstruction = &genai.Content{
+		Parts: []genai.Part{
+			genai.Text(`Bạn là một Agent quản lý tài chính. 
+Người dùng sẽ nói cho bạn biết họ vừa tiêu gì. 
+Nhiệm vụ của bạn là bóc tách thông tin và CHỈ trả về một chuỗi JSON chuẩn mực với các key: "date" (YYYY-MM-DD), "amount" (số nguyên), "category" (phân loại), "description" (mô tả ngắn). Không giải thích gì thêm.`),
+		},
+	}
+	model.ResponseMIMEType = "application/json"
 
-	prompt := genai.Text("Xin chào, hãy trả lời ngắn gọn trong 1 câu: Bạn là ai?")
+	fmt.Println("🚀 Agent Tài chính đang lắng nghe...")
+
+	userInput := "Nay lúc 12h trưa tui đi ăn bát phở nạm bò hết 45 cành, xong mua cốc trà đá 5k nữa."
+	fmt.Println("🗣️ User:", userInput)
+
+	prompt := genai.Text(userInput)
 	resp, err := model.GenerateContent(ctx, prompt)
 	if err != nil {
 		log.Fatalf("Lỗi khi gọi AI: %v", err)
@@ -43,7 +54,7 @@ func main() {
 
 	fmt.Println("=====================================")
 	for _, part := range resp.Candidates[0].Content.Parts {
-		fmt.Printf("🤖 AI Trả lời: %v\n", part)
+		fmt.Printf("🤖 AI Output (JSON):\n%v\n", part)
 	}
 	fmt.Println("=====================================")
 }
