@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/google/generative-ai-go/genai"
 	"github.com/joho/godotenv"
 	"google.golang.org/api/option"
@@ -17,44 +19,66 @@ func main() {
 		log.Fatal("Lỗi: Không tìm thấy file .env")
 	}
 
-	apiKey := os.Getenv("GEMINI_API_KEY")
-	if apiKey == "" {
-		log.Fatal("Lỗi: Chưa cài đặt GEMINI_API_KEY trong file .env")
-	}
-
 	ctx := context.Background()
-
-	client, err := genai.NewClient(ctx, option.WithAPIKey(apiKey))
+	aiClient, err := genai.NewClient(ctx, option.WithAPIKey(os.Getenv("GEMINI_API_KEY")))
 	if err != nil {
-		log.Fatalf("Lỗi khởi tạo client: %v", err)
+		log.Fatalf("Lỗi khởi tạo Gemini: %v", err)
 	}
-	defer client.Close()
+	defer aiClient.Close()
 
-	model := client.GenerativeModel("gemini-3.5-flash")
-
+	model := aiClient.GenerativeModel("gemini-3.5-flash")
 	model.SystemInstruction = &genai.Content{
 		Parts: []genai.Part{
-			genai.Text(`Bạn là một Agent quản lý tài chính. 
-Người dùng sẽ nói cho bạn biết họ vừa tiêu gì. 
-Nhiệm vụ của bạn là bóc tách thông tin và CHỈ trả về một chuỗi JSON chuẩn mực với các key: "date" (YYYY-MM-DD), "amount" (số nguyên), "category" (phân loại), "description" (mô tả ngắn). Không giải thích gì thêm.`),
+			genai.Text(`Bạn là một Agent quản lý tài chính cá nhân.
+Người dùng sẽ nói về các khoản chi tiêu.
+Nhiệm vụ: Phân tích và CHỈ trả về JSON với các key: "date" (YYYY-MM-DD), "amount" (số nguyên), "category", "description". Không giải thích gì thêm.`),
 		},
 	}
 	model.ResponseMIMEType = "application/json"
 
-	fmt.Println("🚀 Agent Tài chính đang lắng nghe...")
-
-	userInput := "Nay lúc 12h trưa tui đi ăn bát phở nạm bò hết 45 cành, xong mua cốc trà đá 5k nữa."
-	fmt.Println("🗣️ User:", userInput)
-
-	prompt := genai.Text(userInput)
-	resp, err := model.GenerateContent(ctx, prompt)
+	bot, err := tgbotapi.NewBotAPI(os.Getenv("TELEGRAM_BOT_TOKEN"))
 	if err != nil {
-		log.Fatalf("Lỗi khi gọi AI: %v", err)
+		log.Fatalf("Lỗi khởi tạo Telegram Bot: %v", err)
 	}
 
-	fmt.Println("=====================================")
-	for _, part := range resp.Candidates[0].Content.Parts {
-		fmt.Printf("🤖 AI Output (JSON):\n%v\n", part)
+	bot.Debug = false
+	log.Printf("🤖 Đã đăng nhập thành công vào bot: %s", bot.Self.UserName)
+
+	u := tgbotapi.NewUpdate(0)
+	u.Timeout = 60
+	updates := bot.GetUpdatesChan(u)
+
+	fmt.Println("🚀 Agent đang chờ tin nhắn trên Telegram...")
+
+	for update := range updates {
+		if update.Message == nil || update.Message.Text == "" {
+			continue
+		}
+
+		userText := update.Message.Text
+		log.Printf("[User %s]: %s", update.Message.From.UserName, userText)
+
+		msgAction := tgbotapi.NewChatAction(update.Message.Chat.ID, tgbotapi.ChatTyping)
+		bot.Send(msgAction)
+
+		prompt := genai.Text(userText)
+		resp, err := model.GenerateContent(ctx, prompt)
+
+		var replyText string
+		if err != nil {
+			replyText = "❌ Lỗi khi phân tích dữ liệu: " + err.Error()
+		} else {
+			for _, part := range resp.Candidates[0].Content.Parts {
+				replyText = fmt.Sprintf("%v", part)
+			}
+			replyText = strings.TrimPrefix(replyText, "```json\n")
+			replyText = strings.TrimSuffix(replyText, "\n```")
+		}
+
+		msg := tgbotapi.NewMessage(update.Message.Chat.ID, "✅ Bóc tách thành công:\n```json\n"+replyText+"\n```")
+		msg.ParseMode = "MarkdownV2"
+		msg.ReplyToMessageID = update.Message.MessageID
+
+		bot.Send(msg)
 	}
-	fmt.Println("=====================================")
 }
