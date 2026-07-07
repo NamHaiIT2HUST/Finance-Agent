@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/NAMHAIIT2HUST/Finance-Agent/internal/tools"
@@ -14,6 +15,7 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/google/generative-ai-go/genai"
 	"github.com/joho/godotenv"
+	"github.com/robfig/cron/v3"
 	"google.golang.org/api/option"
 )
 
@@ -34,7 +36,7 @@ func main() {
 	model.SystemInstruction = &genai.Content{
 		Parts: []genai.Part{
 			genai.Text(`Bạn là một Agent quản lý tài chính cá nhân.
-Người dùng sẽ nói về các khoản chi tiêu.
+Người dùng sẽ nói về các khoản chi tiêu hoặc gửi ảnh hóa đơn.
 Nhiệm vụ: Phân tích và CHỈ trả về JSON với các key: "date" (YYYY-MM-DD), "amount" (số nguyên), "category", "description". Không giải thích gì thêm.`),
 		},
 	}
@@ -44,9 +46,25 @@ Nhiệm vụ: Phân tích và CHỈ trả về JSON với các key: "date" (YYYY
 	if err != nil {
 		log.Fatalf("Lỗi khởi tạo Telegram Bot: %v", err)
 	}
-
 	bot.Debug = false
 	log.Printf("🤖 Đã đăng nhập thành công vào bot: %s", bot.Self.UserName)
+
+	c := cron.New()
+
+	_, errCron := c.AddFunc("* * * * *", func() {
+		chatIDStr := os.Getenv("CHAT_ID")
+		if chatIDStr != "" {
+			chatID, _ := strconv.ParseInt(chatIDStr, 10, 64)
+			msg := tgbotapi.NewMessage(chatID, "🔔 Ting ting! Hải ơi, cuối ngày rồi, xem lại xem hôm nay có khoản chi nào quên chưa đưa cho tôi nhập sổ không?")
+			bot.Send(msg)
+			log.Println("⏰ Đã gửi tin nhắn nhắc nhở theo lịch!")
+		}
+	})
+
+	if errCron != nil {
+		log.Printf("Lỗi cài đặt lịch: %v", errCron)
+	}
+	c.Start()
 
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 60
@@ -59,6 +77,8 @@ Nhiệm vụ: Phân tích và CHỈ trả về JSON với các key: "date" (YYYY
 			continue
 		}
 
+		log.Printf("Chat ID của bạn là: %d", update.Message.Chat.ID)
+
 		var promptParts []genai.Part
 
 		userText := update.Message.Text
@@ -70,14 +90,12 @@ Nhiệm vụ: Phân tích và CHỈ trả về JSON với các key: "date" (YYYY
 			bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID, "📸 Đang phân tích hóa đơn..."))
 
 			photo := update.Message.Photo[len(update.Message.Photo)-1]
-
 			fileURL, err := bot.GetFileDirectURL(photo.FileID)
 			if err == nil {
 				imgResp, errDl := http.Get(fileURL)
 				if errDl == nil {
 					defer imgResp.Body.Close()
 					imgBytes, _ := io.ReadAll(imgResp.Body)
-
 					promptParts = append(promptParts, genai.ImageData("jpeg", imgBytes))
 				}
 			}
@@ -92,7 +110,7 @@ Nhiệm vụ: Phân tích và CHỈ trả về JSON với các key: "date" (YYYY
 		msgAction := tgbotapi.NewChatAction(update.Message.Chat.ID, tgbotapi.ChatTyping)
 		bot.Send(msgAction)
 
-		log.Printf("[User %s]: %s (Có ảnh đính kèm: %v)", update.Message.From.UserName, userText, len(update.Message.Photo) > 0)
+		log.Printf("[User %s]: %s (Có ảnh: %v)", update.Message.From.UserName, userText, len(update.Message.Photo) > 0)
 
 		promptParts = append(promptParts, genai.Text(userText))
 		resp, err := model.GenerateContent(ctx, promptParts...)
@@ -104,6 +122,7 @@ Nhiệm vụ: Phân tích và CHỈ trả về JSON với các key: "date" (YYYY
 			for _, part := range resp.Candidates[0].Content.Parts {
 				replyText = fmt.Sprintf("%v", part)
 			}
+
 			replyText = strings.TrimPrefix(replyText, "```json\n")
 			replyText = strings.TrimSuffix(replyText, "\n```")
 
@@ -122,7 +141,6 @@ Nhiệm vụ: Phân tích và CHỈ trả về JSON với các key: "date" (YYYY
 
 		msg := tgbotapi.NewMessage(update.Message.Chat.ID, replyText)
 		msg.ReplyToMessageID = update.Message.MessageID
-
 		bot.Send(msg)
 	}
 }
