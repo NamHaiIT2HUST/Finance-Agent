@@ -4,4 +4,6 @@
 *.exe~
 *.dll
 *.so
-*.dylib
+*.dylibcredentials.json
+
+credentials.json

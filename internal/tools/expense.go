@@ -1,8 +1,14 @@
 package tools
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"log"
+	"os"
+
+	"google.golang.org/api/option"
+	"google.golang.org/api/sheets/v4"
 )
 
 type Expense struct {
@@ -12,14 +18,42 @@ type Expense struct {
 	Description string `json:"description"`
 }
 
-func ParseExpense(jsonData string) {
+func ParseExpenseJSON(jsonData string) (*Expense, error) {
 	var exp Expense
 	err := json.Unmarshal([]byte(jsonData), &exp)
 	if err != nil {
-		fmt.Println("❌ Lỗi bóc tách JSON:", err)
-		return
+		return nil, err
+	}
+	return &exp, nil
+}
+
+func AppendExpenseToSheet(spreadsheetId string, exp *Expense) error {
+	ctx := context.Background()
+
+	b, err := os.ReadFile("credentials.json")
+	if err != nil {
+		return fmt.Errorf("không thể đọc file credentials.json: %v", err)
 	}
 
-	fmt.Println("✅ Đã bóc tách thành công!")
-	fmt.Printf("- Danh mục: %s\n- Số tiền: %d VND\n- Mô tả: %s\n", exp.Category, exp.Amount, exp.Description)
+	srv, err := sheets.NewService(ctx, option.WithCredentialsJSON(b))
+	if err != nil {
+		return fmt.Errorf("lỗi khởi tạo Sheets client: %v", err)
+	}
+
+	row := &sheets.ValueRange{
+		Values: [][]interface{}{
+			{exp.Date, exp.Amount, exp.Category, exp.Description},
+		},
+	}
+
+	appendCall := srv.Spreadsheets.Values.Append(spreadsheetId, "Sheet1", row)
+	appendCall.ValueInputOption("USER_ENTERED")
+
+	_, err = appendCall.Do()
+	if err != nil {
+		return fmt.Errorf("không thể ghi vào sheet: %v", err)
+	}
+
+	log.Println("✅ Đã ghi thành công vào Database (Google Sheets)!")
+	return nil
 }

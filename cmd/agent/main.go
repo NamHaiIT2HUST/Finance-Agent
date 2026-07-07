@@ -7,6 +7,8 @@ import (
 	"os"
 	"strings"
 
+	"github.com/NAMHAIIT2HUST/Finance-Agent/internal/tools"
+
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/google/generative-ai-go/genai"
 	"github.com/joho/godotenv"
@@ -73,10 +75,21 @@ Nhiệm vụ: Phân tích và CHỈ trả về JSON với các key: "date" (YYYY
 			}
 			replyText = strings.TrimPrefix(replyText, "```json\n")
 			replyText = strings.TrimSuffix(replyText, "\n```")
+
+			exp, errParse := tools.ParseExpenseJSON(replyText)
+			if errParse == nil {
+				errSheet := tools.AppendExpenseToSheet(os.Getenv("SPREADSHEET_ID"), exp)
+				if errSheet != nil {
+					replyText = "Lỗi ghi Database: " + errSheet.Error()
+				} else {
+					replyText = fmt.Sprintf("✅ Đã ghi vào sổ: %s - %d VND (%s)", exp.Description, exp.Amount, exp.Category)
+				}
+			} else {
+				replyText = "Lỗi đọc JSON: " + errParse.Error()
+			}
 		}
 
-		msg := tgbotapi.NewMessage(update.Message.Chat.ID, "✅ Bóc tách thành công:\n```json\n"+replyText+"\n```")
-		msg.ParseMode = "MarkdownV2"
+		msg := tgbotapi.NewMessage(update.Message.Chat.ID, replyText)
 		msg.ReplyToMessageID = update.Message.MessageID
 
 		bot.Send(msg)
