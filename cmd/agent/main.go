@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"os"
 	"strings"
 
@@ -53,18 +55,47 @@ Nhiệm vụ: Phân tích và CHỈ trả về JSON với các key: "date" (YYYY
 	fmt.Println("🚀 Agent đang chờ tin nhắn trên Telegram...")
 
 	for update := range updates {
-		if update.Message == nil || update.Message.Text == "" {
+		if update.Message == nil {
 			continue
 		}
 
+		var promptParts []genai.Part
+
 		userText := update.Message.Text
-		log.Printf("[User %s]: %s", update.Message.From.UserName, userText)
+		if update.Message.Caption != "" {
+			userText = update.Message.Caption
+		}
+
+		if len(update.Message.Photo) > 0 {
+			bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID, "📸 Đang phân tích hóa đơn..."))
+
+			photo := update.Message.Photo[len(update.Message.Photo)-1]
+
+			fileURL, err := bot.GetFileDirectURL(photo.FileID)
+			if err == nil {
+				imgResp, errDl := http.Get(fileURL)
+				if errDl == nil {
+					defer imgResp.Body.Close()
+					imgBytes, _ := io.ReadAll(imgResp.Body)
+
+					promptParts = append(promptParts, genai.ImageData("jpeg", imgBytes))
+				}
+			}
+
+			if userText == "" {
+				userText = "Hãy trích xuất thông tin chi tiêu từ hóa đơn/ảnh chụp màn hình này."
+			}
+		} else if userText == "" {
+			continue
+		}
 
 		msgAction := tgbotapi.NewChatAction(update.Message.Chat.ID, tgbotapi.ChatTyping)
 		bot.Send(msgAction)
 
-		prompt := genai.Text(userText)
-		resp, err := model.GenerateContent(ctx, prompt)
+		log.Printf("[User %s]: %s (Có ảnh đính kèm: %v)", update.Message.From.UserName, userText, len(update.Message.Photo) > 0)
+
+		promptParts = append(promptParts, genai.Text(userText))
+		resp, err := model.GenerateContent(ctx, promptParts...)
 
 		var replyText string
 		if err != nil {
