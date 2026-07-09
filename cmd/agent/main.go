@@ -9,6 +9,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/NAMHAIIT2HUST/Finance-Agent/internal/tools"
 
@@ -49,9 +50,15 @@ Nhiệm vụ: Phân tích và CHỈ trả về JSON với các key: "date" (YYYY
 	bot.Debug = false
 	log.Printf("🤖 Đã đăng nhập thành công vào bot: %s", bot.Self.UserName)
 
-	c := cron.New()
+	loc, errLoc := time.LoadLocation("Asia/Ho_Chi_Minh")
+	if errLoc != nil {
+		log.Printf("Lỗi load timezone: %v", errLoc)
+	}
+	// Khởi tạo Cron với Timezone Việt Nam
+	c := cron.New(cron.WithLocation(loc))
 
-	_, errCron := c.AddFunc("* * * * *", func() {
+	// Đặt lịch vào 22:00 (10 giờ tối) mỗi ngày
+	_, errCron := c.AddFunc("0 22 * * *", func() {
 		chatIDStr := os.Getenv("CHAT_ID")
 		if chatIDStr != "" {
 			chatID, _ := strconv.ParseInt(chatIDStr, 10, 64)
