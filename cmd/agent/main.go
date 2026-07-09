@@ -77,6 +77,18 @@ Nhiệm vụ: Phân tích và CHỈ trả về JSON với các key: "date" (YYYY
 	u.Timeout = 60
 	updates := bot.GetUpdatesChan(u)
 
+	go func() {
+		http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			w.Write([]byte("Agent is running 24/7!"))
+		})
+		port := os.Getenv("PORT")
+		if port == "" {
+			port = "8080"
+		}
+		log.Printf("🌐 Đã mở cổng Web giả %s cho Render", port)
+		http.ListenAndServe(":"+port, nil)
+	}()
+
 	fmt.Println("🚀 Agent đang chờ tin nhắn trên Telegram...")
 
 	for update := range updates {
@@ -86,7 +98,7 @@ Nhiệm vụ: Phân tích và CHỈ trả về JSON với các key: "date" (YYYY
 
 		if update.Message.Text == "/report" {
 			bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID, "📊 Đang tổng hợp dữ liệu chi tiêu..."))
-			
+
 			expenses, err := tools.FetchExpensesFromSheet(os.Getenv("SPREADSHEET_ID"))
 			if err != nil {
 				bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID, "❌ Lỗi khi đọc dữ liệu: "+err.Error()))
@@ -100,9 +112,9 @@ Nhiệm vụ: Phân tích và CHỈ trả về JSON với các key: "date" (YYYY
 
 			// Gửi dữ liệu cho Gemini để viết báo cáo
 			reportPrompt := fmt.Sprintf("Tổng chi tiêu của tôi hiện tại là %d VND. Hãy viết một đoạn nhận xét/báo cáo tài chính ngắn gọn, thân thiện và động viên.", totalAmount)
-			
+
 			bot.Send(tgbotapi.NewChatAction(update.Message.Chat.ID, tgbotapi.ChatTyping))
-			
+
 			// Tạm đổi System Instruction cho báo cáo
 			originalInstruction := model.SystemInstruction
 			model.SystemInstruction = &genai.Content{
@@ -113,7 +125,7 @@ Nhiệm vụ: Phân tích và CHỈ trả về JSON với các key: "date" (YYYY
 			model.ResponseMIMEType = "text/plain"
 
 			resp, err := model.GenerateContent(ctx, genai.Text(reportPrompt))
-			
+
 			// Khôi phục Instruction
 			model.SystemInstruction = originalInstruction
 			model.ResponseMIMEType = "application/json"
