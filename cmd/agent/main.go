@@ -23,7 +23,7 @@ import (
 func main() {
 	err := godotenv.Load()
 	if err != nil {
-		log.Fatal("Lỗi: Không tìm thấy file .env")
+		log.Println("Lưu ý: Không tìm thấy file .env (Bỏ qua vì đang chạy trên Cloud)")
 	}
 
 	ctx := context.Background()
