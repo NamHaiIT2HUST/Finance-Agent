@@ -77,6 +77,60 @@ Nhiệm vụ: Phân tích và CHỈ trả về JSON với các key: "date" (YYYY
 			continue
 		}
 
+		if update.Message.Text == "/report" {
+			bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID, "📊 Đang tổng hợp dữ liệu chi tiêu..."))
+			
+			expenses, err := tools.FetchExpensesFromSheet(os.Getenv("SPREADSHEET_ID"))
+			if err != nil {
+				bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID, "❌ Lỗi khi đọc dữ liệu: "+err.Error()))
+				continue
+			}
+
+			totalAmount := 0
+			for _, exp := range expenses {
+				totalAmount += exp.Amount
+			}
+
+			// Gửi dữ liệu cho Gemini để viết báo cáo
+			reportPrompt := fmt.Sprintf("Tổng chi tiêu của tôi hiện tại là %d VND. Hãy viết một đoạn nhận xét/báo cáo tài chính ngắn gọn, thân thiện và động viên.", totalAmount)
+			
+			bot.Send(tgbotapi.NewChatAction(update.Message.Chat.ID, tgbotapi.ChatTyping))
+			
+			// Tạm đổi System Instruction cho báo cáo
+			originalInstruction := model.SystemInstruction
+			model.SystemInstruction = &genai.Content{
+				Parts: []genai.Part{
+					genai.Text("Bạn là một chuyên gia tư vấn tài chính cá nhân. Hãy viết báo cáo ngắn gọn, thân thiện bằng tiếng Việt."),
+				},
+			}
+			model.ResponseMIMEType = "text/plain"
+
+			resp, err := model.GenerateContent(ctx, genai.Text(reportPrompt))
+			
+			// Khôi phục Instruction
+			model.SystemInstruction = originalInstruction
+			model.ResponseMIMEType = "application/json"
+
+			var aiInsight string
+			if err != nil {
+				if strings.Contains(err.Error(), "429") || strings.Contains(err.Error(), "Quota Exceeded") || strings.Contains(err.Error(), "quota") {
+					aiInsight = "(Hệ thống AI đang quá tải hoặc hết hạn mức trong ngày. Bạn xem tạm tổng tiền nhé!)"
+				} else {
+					aiInsight = "(Không thể tạo nhận xét từ AI lúc này)"
+				}
+			} else {
+				for _, part := range resp.Candidates[0].Content.Parts {
+					aiInsight += fmt.Sprintf("%v", part)
+				}
+			}
+
+			replyText := fmt.Sprintf("💰 **TỔNG CHI TIÊU:** %d VND\n\n💡 **Nhận xét từ AI:**\n%s", totalAmount, aiInsight)
+			msg := tgbotapi.NewMessage(update.Message.Chat.ID, replyText)
+			msg.ParseMode = "Markdown"
+			bot.Send(msg)
+			continue
+		}
+
 		log.Printf("Chat ID của bạn là: %d", update.Message.Chat.ID)
 
 		var promptParts []genai.Part
@@ -117,7 +171,11 @@ Nhiệm vụ: Phân tích và CHỈ trả về JSON với các key: "date" (YYYY
 
 		var replyText string
 		if err != nil {
-			replyText = "❌ Lỗi khi phân tích dữ liệu: " + err.Error()
+			if strings.Contains(err.Error(), "429") || strings.Contains(err.Error(), "Quota Exceeded") || strings.Contains(err.Error(), "quota") {
+				replyText = "Hệ thống AI đang quá tải hoặc hết hạn mức trong ngày. Bạn vui lòng thử lại sau nhé! 🙏"
+			} else {
+				replyText = "❌ Lỗi khi phân tích dữ liệu: " + err.Error()
+			}
 		} else {
 			for _, part := range resp.Candidates[0].Content.Parts {
 				replyText = fmt.Sprintf("%v", part)
