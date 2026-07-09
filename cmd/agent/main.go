@@ -73,23 +73,40 @@ Nhiệm vụ: Phân tích và CHỈ trả về JSON với các key: "date" (YYYY
 	}
 	c.Start()
 
-	u := tgbotapi.NewUpdate(0)
-	u.Timeout = 60
-	updates := bot.GetUpdatesChan(u)
+	var updates tgbotapi.UpdatesChannel
+	webhookURL := os.Getenv("WEBHOOK_URL")
 
-	go func() {
-		http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-			w.Write([]byte("Agent is running 24/7!"))
-		})
+	if webhookURL != "" {
+		// Đăng ký Webhook với Telegram
+		wh, _ := tgbotapi.NewWebhook(webhookURL + "/")
+		_, errWh := bot.Request(wh)
+		if errWh != nil {
+			log.Fatalf("Lỗi set webhook: %v", errWh)
+		}
+
+		// Lắng nghe qua channel Webhook
+		updates = bot.ListenForWebhook("/")
+
 		port := os.Getenv("PORT")
 		if port == "" {
 			port = "8080"
 		}
-		log.Printf("🌐 Đã mở cổng Web giả %s cho Render", port)
-		http.ListenAndServe(":"+port, nil)
-	}()
 
-	fmt.Println("🚀 Agent đang chờ tin nhắn trên Telegram...")
+		// Khởi động HTTP Server thật trên một goroutine để không block vòng lặp xử lý tin nhắn
+		go func() {
+			log.Printf("🌐 Đang chạy Webhook Server ở cổng %s", port)
+			if errHttp := http.ListenAndServe(":"+port, nil); errHttp != nil {
+				log.Fatalf("Lỗi khởi động HTTP Server: %v", errHttp)
+			}
+		}()
+		fmt.Printf("🚀 Agent đang chờ tin nhắn (Chế độ Webhook tại %s)...\n", webhookURL)
+	} else {
+		// Fallback về Long Polling nếu chạy ở local
+		u := tgbotapi.NewUpdate(0)
+		u.Timeout = 60
+		updates = bot.GetUpdatesChan(u)
+		fmt.Println("🚀 Agent đang chờ tin nhắn (Chế độ Long Polling)...")
+	}
 
 	for update := range updates {
 		if update.Message == nil {
