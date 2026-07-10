@@ -167,6 +167,29 @@ Nhiệm vụ: Phân tích và CHỈ trả về JSON với các key: "date" (YYYY
 			continue
 		}
 
+		if update.Message.Text == "/chart" {
+			bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID, "📊 Đang vẽ biểu đồ chi tiêu..."))
+
+			expenses, err := tools.FetchExpensesFromSheet(os.Getenv("SPREADSHEET_ID"))
+			if err != nil {
+				bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID, "❌ Lỗi khi đọc dữ liệu: "+err.Error()))
+				continue
+			}
+
+			chartBytes, err := tools.GeneratePieChart(expenses)
+			if err != nil {
+				bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID, "❌ Lỗi khi vẽ biểu đồ: "+err.Error()))
+				continue
+			}
+
+			photo := tgbotapi.NewPhoto(update.Message.Chat.ID, tgbotapi.FileBytes{
+				Name:  "chart.png",
+				Bytes: chartBytes,
+			})
+			bot.Send(photo)
+			continue
+		}
+
 		log.Printf("Chat ID của bạn là: %d", update.Message.Chat.ID)
 
 		var promptParts []genai.Part
