@@ -108,7 +108,26 @@ Nhiệm vụ: Phân tích và CHỈ trả về JSON với các key: "date" (YYYY
 		fmt.Println("🚀 Agent đang chờ tin nhắn (Chế độ Long Polling)...")
 	}
 
+	editState := make(map[int64]int)
+
 	for update := range updates {
+		if update.CallbackQuery != nil {
+			chatID := update.CallbackQuery.Message.Chat.ID
+			data := update.CallbackQuery.Data
+
+			if strings.HasPrefix(data, "edit_") {
+				rowStr := strings.TrimPrefix(data, "edit_")
+				rowIndex, _ := strconv.Atoi(rowStr)
+				editState[chatID] = rowIndex
+
+				bot.Send(tgbotapi.NewMessage(chatID, fmt.Sprintf("✏️ Bạn đang sửa giao dịch ở dòng %d. Vui lòng nhắn nội dung hoặc gửi hóa đơn mới để tôi cập nhật lại nhé!", rowIndex)))
+				
+				// Trả lời Callback để tắt icon loading trên nút
+				bot.Request(tgbotapi.NewCallback(update.CallbackQuery.ID, "Đã chọn giao dịch"))
+			}
+			continue
+		}
+
 		if update.Message == nil {
 			continue
 		}
@@ -202,6 +221,31 @@ Nhiệm vụ: Phân tích và CHỈ trả về JSON với các key: "date" (YYYY
 			continue
 		}
 
+		if update.Message.Text == "/edit" {
+			bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID, "⏳ Đang tải danh sách 5 giao dịch gần nhất..."))
+			
+			recentExp, err := tools.FetchRecentExpenses(os.Getenv("SPREADSHEET_ID"), 5)
+			if err != nil || len(recentExp) == 0 {
+				bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID, "❌ Không thể lấy danh sách giao dịch."))
+				continue
+			}
+
+			msgText := "Chọn giao dịch bạn muốn sửa:\n"
+			var rows [][]tgbotapi.InlineKeyboardButton
+			
+			for i, r := range recentExp {
+				msgText += fmt.Sprintf("%d. %s: %d VND (%s)\n", i+1, r.Expense.Description, r.Expense.Amount, r.Expense.Date)
+				
+				btn := tgbotapi.NewInlineKeyboardButtonData(fmt.Sprintf("Sửa #%d", i+1), fmt.Sprintf("edit_%d", r.RowIndex))
+				rows = append(rows, tgbotapi.NewInlineKeyboardRow(btn))
+			}
+
+			msg := tgbotapi.NewMessage(update.Message.Chat.ID, msgText)
+			msg.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(rows...)
+			bot.Send(msg)
+			continue
+		}
+
 		log.Printf("Chat ID của bạn là: %d", update.Message.Chat.ID)
 
 		var promptParts []genai.Part
@@ -257,11 +301,22 @@ Nhiệm vụ: Phân tích và CHỈ trả về JSON với các key: "date" (YYYY
 
 			exp, errParse := tools.ParseExpenseJSON(replyText)
 			if errParse == nil {
-				errSheet := tools.AppendExpenseToSheet(os.Getenv("SPREADSHEET_ID"), exp)
-				if errSheet != nil {
-					replyText = "Lỗi ghi Database: " + errSheet.Error()
+				chatID := update.Message.Chat.ID
+				if rowIndex, ok := editState[chatID]; ok && rowIndex > 0 {
+					errSheet := tools.UpdateExpenseRow(os.Getenv("SPREADSHEET_ID"), rowIndex, exp)
+					if errSheet != nil {
+						replyText = "Lỗi cập nhật Database: " + errSheet.Error()
+					} else {
+						replyText = fmt.Sprintf("✏️ Đã SỬA thành công dòng %d: %s - %d VND", rowIndex, exp.Description, exp.Amount)
+						delete(editState, chatID) // Xóa state
+					}
 				} else {
-					replyText = fmt.Sprintf("✅ Đã ghi vào sổ: %s - %d VND (%s)", exp.Description, exp.Amount, exp.Category)
+					errSheet := tools.AppendExpenseToSheet(os.Getenv("SPREADSHEET_ID"), exp)
+					if errSheet != nil {
+						replyText = "Lỗi ghi Database: " + errSheet.Error()
+					} else {
+						replyText = fmt.Sprintf("✅ Đã ghi vào sổ: %s - %d VND (%s)", exp.Description, exp.Amount, exp.Category)
+					}
 				}
 			} else {
 				replyText = "Lỗi đọc JSON: " + errParse.Error()

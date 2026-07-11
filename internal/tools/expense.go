@@ -126,3 +126,84 @@ func UndoLastExpense(spreadsheetId string) error {
 
 	return nil
 }
+
+// ExpenseWithRow chứa thông tin chi tiêu kèm theo số dòng để tiện chỉnh sửa
+type ExpenseWithRow struct {
+	RowIndex int
+	Expense  Expense
+}
+
+// FetchRecentExpenses lấy n giao dịch gần nhất (thường là 5)
+func FetchRecentExpenses(spreadsheetId string, limit int) ([]ExpenseWithRow, error) {
+	ctx := context.Background()
+
+	b, err := os.ReadFile("credentials.json")
+	if err != nil {
+		return nil, fmt.Errorf("không thể đọc file credentials.json: %v", err)
+	}
+
+	srv, err := sheets.NewService(ctx, option.WithCredentialsJSON(b))
+	if err != nil {
+		return nil, fmt.Errorf("lỗi khởi tạo Sheets client: %v", err)
+	}
+
+	readRange := "Sheet1!A:D"
+	resp, err := srv.Spreadsheets.Values.Get(spreadsheetId, readRange).Do()
+	if err != nil {
+		return nil, fmt.Errorf("không thể đọc dữ liệu: %v", err)
+	}
+
+	var results []ExpenseWithRow
+	// Bỏ qua dòng tiêu đề, lặp ngược từ cuối lên
+	for i := len(resp.Values) - 1; i > 0 && len(results) < limit; i-- {
+		row := resp.Values[i]
+		if len(row) >= 4 {
+			amountStr := fmt.Sprintf("%v", row[1])
+			var amount int
+			fmt.Sscanf(amountStr, "%d", &amount)
+
+			results = append(results, ExpenseWithRow{
+				RowIndex: i + 1, // Sheet API là 1-based index (A1)
+				Expense: Expense{
+					Date:        fmt.Sprintf("%v", row[0]),
+					Amount:      amount,
+					Category:    fmt.Sprintf("%v", row[2]),
+					Description: fmt.Sprintf("%v", row[3]),
+				},
+			})
+		}
+	}
+	return results, nil
+}
+
+// UpdateExpenseRow cập nhật lại dữ liệu tại một dòng cụ thể
+func UpdateExpenseRow(spreadsheetId string, rowIndex int, exp *Expense) error {
+	ctx := context.Background()
+
+	b, err := os.ReadFile("credentials.json")
+	if err != nil {
+		return fmt.Errorf("không thể đọc file credentials.json: %v", err)
+	}
+
+	srv, err := sheets.NewService(ctx, option.WithCredentialsJSON(b))
+	if err != nil {
+		return fmt.Errorf("lỗi khởi tạo Sheets client: %v", err)
+	}
+
+	updateRange := fmt.Sprintf("Sheet1!A%d:D%d", rowIndex, rowIndex)
+	row := &sheets.ValueRange{
+		Values: [][]interface{}{
+			{exp.Date, exp.Amount, exp.Category, exp.Description},
+		},
+	}
+
+	updateCall := srv.Spreadsheets.Values.Update(spreadsheetId, updateRange, row)
+	updateCall.ValueInputOption("USER_ENTERED")
+
+	_, err = updateCall.Do()
+	if err != nil {
+		return fmt.Errorf("không thể cập nhật dòng %d: %v", rowIndex, err)
+	}
+
+	return nil
+}
