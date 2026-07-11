@@ -392,13 +392,16 @@ Không giải thích gì thêm.`),
 			exp, errParse := tools.ParseExpenseJSON(replyText)
 			if errParse == nil {
 				chatID := update.Message.Chat.ID
+				isSuccess := false
+				
 				if rowIndex, ok := editState[chatID]; ok && rowIndex > 0 {
 					errSheet := tools.UpdateExpenseRow(os.Getenv("SPREADSHEET_ID"), rowIndex, exp)
 					if errSheet != nil {
 						replyText = "Lỗi cập nhật Database: " + errSheet.Error()
 					} else {
-						replyText = fmt.Sprintf("✏️ Đã SỬA thành công dòng %d: %s - %d VND", rowIndex, exp.Description, exp.Amount)
+						replyText = fmt.Sprintf("✏️ Đã SỬA thành công dòng %d: [%s] %s - %d VND", rowIndex, exp.Type, exp.Description, exp.Amount)
 						delete(editState, chatID) // Xóa state
+						isSuccess = true
 					}
 				} else {
 					errSheet := tools.AppendExpenseToSheet(os.Getenv("SPREADSHEET_ID"), exp)
@@ -406,8 +409,39 @@ Không giải thích gì thêm.`),
 						replyText = "Lỗi ghi Database: " + errSheet.Error()
 					} else {
 						replyText = fmt.Sprintf("✅ Đã ghi vào sổ: [%s] %s - %d VND (%s)", exp.Type, exp.Description, exp.Amount, exp.Category)
+						isSuccess = true
 					}
 				}
+
+				// Tính năng Cảnh báo Ngân sách (Budget Alerts)
+				if isSuccess && (exp.Type == "Chi" || exp.Type == "chi" || exp.Type == "") {
+					budgetStr := os.Getenv("MONTHLY_BUDGET")
+					if budgetStr != "" {
+						if budget, errB := strconv.Atoi(budgetStr); errB == nil && budget > 0 {
+							allExps, errF := tools.FetchExpensesFromSheet(os.Getenv("SPREADSHEET_ID"))
+							if errF == nil {
+								currentMonth := time.Now().Format("2006-01") // Lấy chuỗi YYYY-MM
+								totalMonthExpense := 0
+								
+								for _, e := range allExps {
+									if (e.Type == "Chi" || e.Type == "chi" || e.Type == "") && strings.HasPrefix(e.Date, currentMonth) {
+										totalMonthExpense += e.Amount
+									}
+								}
+								
+								percent := float64(totalMonthExpense) / float64(budget) * 100
+								if percent >= 100 {
+									replyText += fmt.Sprintf("\n\n🚨 **BÁO ĐỘNG ĐỎ:** Bạn đã tiêu %d VND, vượt quá 100%% ngân sách tháng (%d VND)!", totalMonthExpense, budget)
+								} else if percent >= 90 {
+									replyText += fmt.Sprintf("\n\n⚠️ **CẢNH BÁO:** Bạn đã tiêu %d VND (%.1f%% ngân sách). Phải cực kỳ thắt lưng buộc bụng nhé!", totalMonthExpense, percent)
+								} else if percent >= 80 {
+									replyText += fmt.Sprintf("\n\n⚠️ **Chú ý:** Bạn đã tiêu %.1f%% ngân sách tháng. Bắt đầu hãm phanh thôi!", percent)
+								}
+							}
+						}
+					}
+				}
+
 			} else {
 				replyText = "Lỗi đọc JSON: " + errParse.Error()
 			}
