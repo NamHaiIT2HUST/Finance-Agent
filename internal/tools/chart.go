@@ -8,9 +8,13 @@ import (
 
 // GeneratePieChart nhóm dữ liệu Expenses theo Category và trả về mảng byte ảnh PNG của Pie Chart
 func GeneratePieChart(expenses []Expense) ([]byte, error) {
-	// Nhóm dữ liệu theo danh mục
+	// Nhóm dữ liệu theo danh mục (chỉ tính các khoản 'Chi')
 	categoryTotals := make(map[string]float64)
 	for _, exp := range expenses {
+		if exp.Type == "Thu" || exp.Type == "thu" {
+			continue // Bỏ qua khoản thu nhập
+		}
+		
 		if exp.Category == "" {
 			categoryTotals["Khác"] += float64(exp.Amount)
 		} else {

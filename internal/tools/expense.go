@@ -13,6 +13,7 @@ import (
 
 type Expense struct {
 	Date        string `json:"date"`
+	Type        string `json:"type"` // "Thu" hoặc "Chi"
 	Amount      int    `json:"amount"`
 	Category    string `json:"category"`
 	Description string `json:"description"`
@@ -42,7 +43,7 @@ func AppendExpenseToSheet(spreadsheetId string, exp *Expense) error {
 
 	row := &sheets.ValueRange{
 		Values: [][]interface{}{
-			{exp.Date, exp.Amount, exp.Category, exp.Description},
+			{exp.Date, exp.Type, exp.Amount, exp.Category, exp.Description},
 		},
 	}
 
@@ -147,7 +148,7 @@ func FetchRecentExpenses(spreadsheetId string, limit int) ([]ExpenseWithRow, err
 		return nil, fmt.Errorf("lỗi khởi tạo Sheets client: %v", err)
 	}
 
-	readRange := "Sheet1!A:D"
+	readRange := "Sheet1!A:E"
 	resp, err := srv.Spreadsheets.Values.Get(spreadsheetId, readRange).Do()
 	if err != nil {
 		return nil, fmt.Errorf("không thể đọc dữ liệu: %v", err)
@@ -157,21 +158,41 @@ func FetchRecentExpenses(spreadsheetId string, limit int) ([]ExpenseWithRow, err
 	// Bỏ qua dòng tiêu đề, lặp ngược từ cuối lên
 	for i := len(resp.Values) - 1; i > 0 && len(results) < limit; i-- {
 		row := resp.Values[i]
-		if len(row) >= 4 {
+		
+		// Hỗ trợ cả định dạng cũ (4 cột) và mới (5 cột)
+		var exp Expense
+		if len(row) >= 5 {
+			amountStr := fmt.Sprintf("%v", row[2])
+			var amount int
+			fmt.Sscanf(amountStr, "%d", &amount)
+
+			exp = Expense{
+				Date:        fmt.Sprintf("%v", row[0]),
+				Type:        fmt.Sprintf("%v", row[1]),
+				Amount:      amount,
+				Category:    fmt.Sprintf("%v", row[3]),
+				Description: fmt.Sprintf("%v", row[4]),
+			}
+		} else if len(row) >= 4 { // Legacy format
 			amountStr := fmt.Sprintf("%v", row[1])
 			var amount int
 			fmt.Sscanf(amountStr, "%d", &amount)
 
-			results = append(results, ExpenseWithRow{
-				RowIndex: i + 1, // Sheet API là 1-based index (A1)
-				Expense: Expense{
-					Date:        fmt.Sprintf("%v", row[0]),
-					Amount:      amount,
-					Category:    fmt.Sprintf("%v", row[2]),
-					Description: fmt.Sprintf("%v", row[3]),
-				},
-			})
+			exp = Expense{
+				Date:        fmt.Sprintf("%v", row[0]),
+				Type:        "Chi", // Dữ liệu cũ mặc định là Chi
+				Amount:      amount,
+				Category:    fmt.Sprintf("%v", row[2]),
+				Description: fmt.Sprintf("%v", row[3]),
+			}
+		} else {
+			continue
 		}
+
+		results = append(results, ExpenseWithRow{
+			RowIndex: i + 1, // Sheet API là 1-based index (A1)
+			Expense:  exp,
+		})
 	}
 	return results, nil
 }
@@ -190,10 +211,10 @@ func UpdateExpenseRow(spreadsheetId string, rowIndex int, exp *Expense) error {
 		return fmt.Errorf("lỗi khởi tạo Sheets client: %v", err)
 	}
 
-	updateRange := fmt.Sprintf("Sheet1!A%d:D%d", rowIndex, rowIndex)
+	updateRange := fmt.Sprintf("Sheet1!A%d:E%d", rowIndex, rowIndex)
 	row := &sheets.ValueRange{
 		Values: [][]interface{}{
-			{exp.Date, exp.Amount, exp.Category, exp.Description},
+			{exp.Date, exp.Type, exp.Amount, exp.Category, exp.Description},
 		},
 	}
 

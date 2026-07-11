@@ -37,8 +37,14 @@ func main() {
 	model.SystemInstruction = &genai.Content{
 		Parts: []genai.Part{
 			genai.Text(`Bạn là một Agent quản lý tài chính cá nhân.
-Người dùng sẽ nói về các khoản chi tiêu hoặc gửi ảnh hóa đơn.
-Nhiệm vụ: Phân tích và CHỈ trả về JSON với các key: "date" (YYYY-MM-DD), "amount" (số nguyên), "category", "description". Không giải thích gì thêm.`),
+Người dùng sẽ nói về các khoản thu nhập hoặc chi tiêu.
+Nhiệm vụ: Phân tích và CHỈ trả về JSON với các key: 
+- "date" (YYYY-MM-DD)
+- "type" ("Thu" hoặc "Chi")
+- "amount" (số nguyên dương)
+- "category" (nhóm chi tiêu/thu nhập)
+- "description".
+Không giải thích gì thêm.`),
 		},
 	}
 	model.ResponseMIMEType = "application/json"
@@ -141,13 +147,19 @@ Nhiệm vụ: Phân tích và CHỈ trả về JSON với các key: "date" (YYYY
 				continue
 			}
 
-			totalAmount := 0
+			totalExpense := 0
+			totalIncome := 0
 			for _, exp := range expenses {
-				totalAmount += exp.Amount
+				if exp.Type == "Thu" || exp.Type == "thu" {
+					totalIncome += exp.Amount
+				} else {
+					totalExpense += exp.Amount
+				}
 			}
+			netBalance := totalIncome - totalExpense
 
 			// Gửi dữ liệu cho Gemini để viết báo cáo
-			reportPrompt := fmt.Sprintf("Tổng chi tiêu của tôi hiện tại là %d VND. Hãy viết một đoạn nhận xét/báo cáo tài chính ngắn gọn, thân thiện và động viên.", totalAmount)
+			reportPrompt := fmt.Sprintf("Tổng thu: %d, Tổng chi: %d, Số dư hiện tại: %d VND. Hãy viết một đoạn nhận xét/báo cáo tài chính ngắn gọn, thân thiện và đưa ra lời khuyên.", totalIncome, totalExpense, netBalance)
 
 			bot.Send(tgbotapi.NewChatAction(update.Message.Chat.ID, tgbotapi.ChatTyping))
 
@@ -179,7 +191,7 @@ Nhiệm vụ: Phân tích và CHỈ trả về JSON với các key: "date" (YYYY
 				}
 			}
 
-			replyText := fmt.Sprintf("💰 **TỔNG CHI TIÊU:** %d VND\n\n💡 **Nhận xét từ AI:**\n%s", totalAmount, aiInsight)
+			replyText := fmt.Sprintf("🟢 **TỔNG THU:** %d VND\n🔴 **TỔNG CHI:** %d VND\n💰 **SỐ DƯ:** %d VND\n\n💡 **Nhận xét từ AI:**\n%s", totalIncome, totalExpense, netBalance, aiInsight)
 			msg := tgbotapi.NewMessage(update.Message.Chat.ID, replyText)
 			msg.ParseMode = "Markdown"
 			bot.Send(msg)
@@ -338,7 +350,7 @@ Nhiệm vụ: Phân tích và CHỈ trả về JSON với các key: "date" (YYYY
 					if errSheet != nil {
 						replyText = "Lỗi ghi Database: " + errSheet.Error()
 					} else {
-						replyText = fmt.Sprintf("✅ Đã ghi vào sổ: %s - %d VND (%s)", exp.Description, exp.Amount, exp.Category)
+						replyText = fmt.Sprintf("✅ Đã ghi vào sổ: [%s] %s - %d VND (%s)", exp.Type, exp.Description, exp.Amount, exp.Category)
 					}
 				}
 			} else {

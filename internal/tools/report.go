@@ -6,7 +6,6 @@ import (
 	"encoding/csv"
 	"fmt"
 	"os"
-	"strconv"
 
 	"google.golang.org/api/option"
 	"google.golang.org/api/sheets/v4"
@@ -26,8 +25,8 @@ func FetchExpensesFromSheet(spreadsheetId string) ([]Expense, error) {
 		return nil, fmt.Errorf("lỗi khởi tạo Sheets client: %v", err)
 	}
 
-	// Assuming data is in Sheet1!A:D (Date, Amount, Category, Description)
-	readRange := "Sheet1!A:D"
+	// Đọc dữ liệu từ cột A đến E
+	readRange := "Sheet1!A:E"
 	resp, err := srv.Spreadsheets.Values.Get(spreadsheetId, readRange).Do()
 	if err != nil {
 		return nil, fmt.Errorf("không thể đọc dữ liệu từ sheet: %v", err)
@@ -40,21 +39,37 @@ func FetchExpensesFromSheet(spreadsheetId string) ([]Expense, error) {
 			continue
 		}
 
-		if len(row) >= 4 {
-			amountStr := fmt.Sprintf("%v", row[1])
-			amount, err := strconv.Atoi(amountStr)
-			if err != nil {
-				// If amount is not a number, maybe it's header, skip or set 0
-				continue // better skip than set 0
-			}
+		// Hỗ trợ định dạng cũ (4 cột) và mới (5 cột)
+		var exp Expense
+		if len(row) >= 5 {
+			amountStr := fmt.Sprintf("%v", row[2])
+			var amount int
+			fmt.Sscanf(amountStr, "%d", &amount)
 
-			expenses = append(expenses, Expense{
+			exp = Expense{
 				Date:        fmt.Sprintf("%v", row[0]),
+				Type:        fmt.Sprintf("%v", row[1]),
+				Amount:      amount,
+				Category:    fmt.Sprintf("%v", row[3]),
+				Description: fmt.Sprintf("%v", row[4]),
+			}
+		} else if len(row) >= 4 { // Legacy format
+			amountStr := fmt.Sprintf("%v", row[1])
+			var amount int
+			fmt.Sscanf(amountStr, "%d", &amount)
+
+			exp = Expense{
+				Date:        fmt.Sprintf("%v", row[0]),
+				Type:        "Chi", // Mặc định cũ là chi
 				Amount:      amount,
 				Category:    fmt.Sprintf("%v", row[2]),
 				Description: fmt.Sprintf("%v", row[3]),
-			})
+			}
+		} else {
+			continue
 		}
+
+		expenses = append(expenses, exp)
 	}
 
 	return expenses, nil
@@ -69,7 +84,7 @@ func GenerateCSVReport(expenses []Expense) ([]byte, error) {
 	buf.WriteString("\xef\xbb\xbf")
 
 	// Ghi dòng tiêu đề
-	if err := writer.Write([]string{"Ngày", "Số Tiền", "Danh Mục", "Mô Tả"}); err != nil {
+	if err := writer.Write([]string{"Ngày", "Loại", "Số Tiền", "Danh Mục", "Mô Tả"}); err != nil {
 		return nil, err
 	}
 
@@ -77,6 +92,7 @@ func GenerateCSVReport(expenses []Expense) ([]byte, error) {
 	for _, exp := range expenses {
 		row := []string{
 			exp.Date,
+			exp.Type,
 			fmt.Sprintf("%d", exp.Amount),
 			exp.Category,
 			exp.Description,
