@@ -1,7 +1,9 @@
 package tools
 
 import (
+	"bytes"
 	"context"
+	"encoding/csv"
 	"fmt"
 	"os"
 	"strconv"
@@ -56,4 +58,38 @@ func FetchExpensesFromSheet(spreadsheetId string) ([]Expense, error) {
 	}
 
 	return expenses, nil
+}
+
+// GenerateCSVReport tạo nội dung CSV từ danh sách Expense
+func GenerateCSVReport(expenses []Expense) ([]byte, error) {
+	var buf bytes.Buffer
+	writer := csv.NewWriter(&buf)
+
+	// Ghi BOM để Excel đọc đúng tiếng Việt (UTF-8)
+	buf.WriteString("\xef\xbb\xbf")
+
+	// Ghi dòng tiêu đề
+	if err := writer.Write([]string{"Ngày", "Số Tiền", "Danh Mục", "Mô Tả"}); err != nil {
+		return nil, err
+	}
+
+	// Ghi dữ liệu
+	for _, exp := range expenses {
+		row := []string{
+			exp.Date,
+			fmt.Sprintf("%d", exp.Amount),
+			exp.Category,
+			exp.Description,
+		}
+		if err := writer.Write(row); err != nil {
+			return nil, err
+		}
+	}
+
+	writer.Flush()
+	if err := writer.Error(); err != nil {
+		return nil, err
+	}
+
+	return buf.Bytes(), nil
 }

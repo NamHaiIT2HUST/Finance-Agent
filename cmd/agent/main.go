@@ -246,6 +246,29 @@ Nhiệm vụ: Phân tích và CHỈ trả về JSON với các key: "date" (YYYY
 			continue
 		}
 
+		if update.Message.Text == "/export" {
+			bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID, "⏳ Đang tạo file báo cáo (CSV)..."))
+
+			expenses, err := tools.FetchExpensesFromSheet(os.Getenv("SPREADSHEET_ID"))
+			if err != nil {
+				bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID, "❌ Lỗi khi đọc dữ liệu: "+err.Error()))
+				continue
+			}
+
+			csvBytes, err := tools.GenerateCSVReport(expenses)
+			if err != nil {
+				bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID, "❌ Lỗi khi tạo file CSV: "+err.Error()))
+				continue
+			}
+
+			doc := tgbotapi.NewDocument(update.Message.Chat.ID, tgbotapi.FileBytes{
+				Name:  "finance_report.csv",
+				Bytes: csvBytes,
+			})
+			bot.Send(doc)
+			continue
+		}
+
 		log.Printf("Chat ID của bạn là: %d", update.Message.Chat.ID)
 
 		var promptParts []genai.Part
