@@ -190,6 +190,18 @@ Nhiệm vụ: Phân tích và CHỈ trả về JSON với các key: "date" (YYYY
 			continue
 		}
 
+		if update.Message.Text == "/undo" {
+			bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID, "⏳ Đang tiến hành xóa giao dịch cuối cùng..."))
+
+			err := tools.UndoLastExpense(os.Getenv("SPREADSHEET_ID"))
+			if err != nil {
+				bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID, "❌ Lỗi khi hoàn tác: "+err.Error()))
+			} else {
+				bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID, "✅ Đã xóa giao dịch cuối cùng thành công!"))
+			}
+			continue
+		}
+
 		log.Printf("Chat ID của bạn là: %d", update.Message.Chat.ID)
 
 		var promptParts []genai.Part
