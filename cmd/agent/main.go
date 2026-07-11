@@ -281,6 +281,61 @@ Không giải thích gì thêm.`),
 			continue
 		}
 
+		if strings.HasPrefix(update.Message.Text, "/ask") {
+			question := strings.TrimSpace(strings.TrimPrefix(update.Message.Text, "/ask"))
+			if question == "" {
+				bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID, "Vui lòng nhập câu hỏi sau lệnh /ask.\nVí dụ: `/ask Tháng trước tôi tiêu bao nhiêu tiền ăn?`"))
+				continue
+			}
+
+			bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID, "🤔 Đang tra cứu dữ liệu và suy nghĩ..."))
+			bot.Send(tgbotapi.NewChatAction(update.Message.Chat.ID, tgbotapi.ChatTyping))
+
+			expenses, err := tools.FetchExpensesFromSheet(os.Getenv("SPREADSHEET_ID"))
+			if err != nil {
+				bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID, "❌ Lỗi khi đọc dữ liệu: "+err.Error()))
+				continue
+			}
+
+			csvBytes, err := tools.GenerateCSVReport(expenses)
+			if err != nil {
+				bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID, "❌ Lỗi xử lý dữ liệu: "+err.Error()))
+				continue
+			}
+
+			// Gửi Prompt kèm theo dữ liệu cho Gemini
+			askPrompt := fmt.Sprintf("Dưới đây là dữ liệu tài chính cá nhân của tôi định dạng CSV.\n\nCâu hỏi: %s\n\nDữ liệu CSV:\n%s", question, string(csvBytes))
+
+			// Tạm đổi System Instruction
+			originalInstruction := model.SystemInstruction
+			model.SystemInstruction = &genai.Content{
+				Parts: []genai.Part{
+					genai.Text("Bạn là một chuyên gia kế toán. Hãy phân tích bảng dữ liệu CSV được cung cấp và trả lời câu hỏi của người dùng. Trả lời cực kỳ ngắn gọn, chính xác bằng tiếng Việt. Nếu dữ liệu không có, hãy báo không tìm thấy."),
+				},
+			}
+			model.ResponseMIMEType = "text/plain"
+
+			resp, err := model.GenerateContent(ctx, genai.Text(askPrompt))
+
+			// Khôi phục Instruction
+			model.SystemInstruction = originalInstruction
+			model.ResponseMIMEType = "application/json"
+
+			var replyText string
+			if err != nil {
+				replyText = "❌ Lỗi khi AI phân tích: " + err.Error()
+			} else {
+				for _, part := range resp.Candidates[0].Content.Parts {
+					replyText += fmt.Sprintf("%v", part)
+				}
+			}
+
+			msg := tgbotapi.NewMessage(update.Message.Chat.ID, "🤖 **AI Trả lời:**\n"+replyText)
+			msg.ParseMode = "Markdown"
+			bot.Send(msg)
+			continue
+		}
+
 		log.Printf("Chat ID của bạn là: %d", update.Message.Chat.ID)
 
 		var promptParts []genai.Part
