@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Finance Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="glass-panel header">
+            <div class="user-info">
+                <h1 id="userName">Xin chào!</h1>
+                <p>Tổng quan tài chính của bạn</p>
+            </div>
+            <div id="themeToggle" class="theme-btn">🌙</div>
+        </header>
+
+        <!-- Summary Cards -->
+        <div class="summary-grid">
+            <div class="glass-card income-card">
+                <h3>Tổng Thu</h3>
+                <p id="totalIncome" class="amount positive">0 ₫</p>
+            </div>
+            <div class="glass-card expense-card">
+                <h3>Tổng Chi</h3>
+                <p id="totalExpense" class="amount negative">0 ₫</p>
+            </div>
+            <div class="glass-card balance-card full-width">
+                <h3>Số Dư Hiện Tại</h3>
+                <p id="netBalance" class="amount neutral">0 ₫</p>
+            </div>
+        </div>
+
+        <!-- Chart Section -->
+        <section class="glass-panel chart-section">
+            <h2>Phân bổ chi tiêu</h2>
+            <div class="chart-container">
+                <canvas id="expenseChart"></canvas>
+            </div>
+        </section>
+
+        <!-- Recent Transactions -->
+        <section class="glass-panel transactions-section">
+            <div class="section-header">
+                <h2>Giao dịch gần đây</h2>
+                <span class="badge" id="txCount">0</span>
+            </div>
+            <div id="transactionsList" class="transactions-list">
+                <div class="loading">Đang tải dữ liệu...</div>
+            </div>
+        </section>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

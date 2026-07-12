@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -79,11 +80,39 @@ Không giải thích gì thêm.`),
 	}
 	c.Start()
 
+	// Cấu hình HTTP Server cho API và Web Dashboard (Phục vụ cả Local và Webhook)
+	http.HandleFunc("/api/expenses", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Content-Type", "application/json")
+		
+		expenses, err := tools.FetchExpensesFromSheet(os.Getenv("SPREADSHEET_ID"))
+		if err != nil {
+			http.Error(w, `{"error": "không thể tải dữ liệu"}`, http.StatusInternalServerError)
+			return
+		}
+		json.NewEncoder(w).Encode(expenses)
+	})
+
+	http.Handle("/dashboard/", http.StripPrefix("/dashboard/", http.FileServer(http.Dir("./web"))))
+
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+
+	go func() {
+		log.Printf("🌐 Đang chạy HTTP Server ở cổng %s", port)
+		if errHttp := http.ListenAndServe(":"+port, nil); errHttp != nil {
+			log.Printf("Lỗi khởi động HTTP Server (hoặc server đã chạy): %v", errHttp)
+		}
+	}()
+
 	var updates tgbotapi.UpdatesChannel
 	webhookURL := os.Getenv("WEBHOOK_URL")
 
 	if webhookURL != "" {
-		// Đăng ký Webhook với Telegram
+		// Đăng ký Webhook với Telegram (nên dùng một path khó đoán như /<token> hoặc /webhook)
+		// Ở đây vẫn để / để tương thích cũ
 		wh, _ := tgbotapi.NewWebhook(webhookURL + "/")
 		_, errWh := bot.Request(wh)
 		if errWh != nil {
@@ -92,22 +121,10 @@ Không giải thích gì thêm.`),
 
 		// Lắng nghe qua channel Webhook
 		updates = bot.ListenForWebhook("/")
-
-		port := os.Getenv("PORT")
-		if port == "" {
-			port = "8080"
-		}
-
-		// Khởi động HTTP Server thật trên một goroutine để không block vòng lặp xử lý tin nhắn
-		go func() {
-			log.Printf("🌐 Đang chạy Webhook Server ở cổng %s", port)
-			if errHttp := http.ListenAndServe(":"+port, nil); errHttp != nil {
-				log.Fatalf("Lỗi khởi động HTTP Server: %v", errHttp)
-			}
-		}()
 		fmt.Printf("🚀 Agent đang chờ tin nhắn (Chế độ Webhook tại %s)...\n", webhookURL)
 	} else {
 		// Fallback về Long Polling nếu chạy ở local
+		_, _ = bot.Request(tgbotapi.DeleteWebhookConfig{})
 		u := tgbotapi.NewUpdate(0)
 		u.Timeout = 60
 		updates = bot.GetUpdatesChan(u)
@@ -218,6 +235,29 @@ Không giải thích gì thêm.`),
 				Bytes: chartBytes,
 			})
 			bot.Send(photo)
+			continue
+		}
+
+		if update.Message.Text == "/dashboard" {
+			msgText := "🌟 **Web Dashboard**\n\nBấm vào nút bên dưới để mở giao diện quản lý tài chính nâng cao trực tiếp trên Telegram!"
+			msg := tgbotapi.NewMessage(update.Message.Chat.ID, msgText)
+			msg.ParseMode = "Markdown"
+			
+			// Lấy URL gốc
+			appURL := os.Getenv("WEBHOOK_URL")
+			if appURL == "" {
+				appURL = "https://your-ngrok-url.ngrok-free.app" // Tạm thời hardcode hoặc yêu cầu dev thay ngrok URL khi test local
+			}
+			appURL += "/dashboard/"
+
+			// Nút Inline mở Web App bằng trình duyệt nội bộ của Telegram
+			btn := tgbotapi.InlineKeyboardButton{
+				Text: "🚀 Mở Dashboard",
+				URL:  &appURL,
+			}
+			msg.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(tgbotapi.NewInlineKeyboardRow(btn))
+			
+			bot.Send(msg)
 			continue
 		}
 
