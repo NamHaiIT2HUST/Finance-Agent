@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
@@ -98,6 +99,7 @@ Nhiệm vụ: Phân tích và CHỈ trả về một MẢNG (ARRAY) JSON, mỗi 
 - "category" (nhóm chi tiêu/thu nhập)
 - "description".
 Ví dụ: [{"date": "2023-10-25", "type": "Chi", "amount": 50000, "category": "Ăn uống", "description": "Phở"}, {"date": "2023-10-25", "type": "Chi", "amount": 10000, "category": "Ăn uống", "description": "Trà đá"}]
+TUYỆT ĐỐI trả về mảng JSON hợp lệ, KHÔNG có dấu phẩy thừa (trailing comma) ở phần tử cuối cùng.
 Không giải thích gì thêm.`),
 		},
 	}
@@ -437,25 +439,34 @@ Không giải thích gì thêm.`),
 		}
 
 		if update.Message.Text == "/dashboard" {
-			msgText := "🌟 **Web Dashboard**\n\nBấm vào nút bên dưới để mở giao diện quản lý tài chính nâng cao trực tiếp trên Telegram!"
-			msg := tgbotapi.NewMessage(update.Message.Chat.ID, msgText)
-			msg.ParseMode = "Markdown"
-			
-			// Lấy URL gốc
 			appURL := os.Getenv("WEBHOOK_URL")
 			if appURL == "" {
 				appURL = "https://your-ngrok-url.ngrok-free.app" // Tạm thời hardcode hoặc yêu cầu dev thay ngrok URL khi test local
 			}
 			appURL += "/dashboard/"
 
-			// Nút Inline mở Web App bằng trình duyệt nội bộ của Telegram
-			btn := tgbotapi.InlineKeyboardButton{
-				Text: "🚀 Mở Dashboard",
-				URL:  &appURL,
+			// Bắn HTTP Request raw để gửi nút WebApp đúng chuẩn API Telegram
+			urlStr := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", os.Getenv("TELEGRAM_BOT_TOKEN"))
+			payload := map[string]interface{}{
+				"chat_id":    update.Message.Chat.ID,
+				"text":       "🌟 **Web Dashboard**\n\nBấm vào nút bên dưới để mở giao diện quản lý tài chính nâng cao trực tiếp trên Telegram!",
+				"parse_mode": "Markdown",
+				"reply_markup": map[string]interface{}{
+					"inline_keyboard": [][]*map[string]interface{}{
+						{
+							{
+								"text": "🚀 Mở Dashboard",
+								"web_app": map[string]string{
+									"url": appURL,
+								},
+							},
+						},
+					},
+				},
 			}
-			msg.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(tgbotapi.NewInlineKeyboardRow(btn))
 			
-			bot.Send(msg)
+			b, _ := json.Marshal(payload)
+			http.Post(urlStr, "application/json", bytes.NewBuffer(b))
 			continue
 		}
 
@@ -621,6 +632,11 @@ Không giải thích gì thêm.`),
 
 			replyText = strings.TrimPrefix(replyText, "```json\n")
 			replyText = strings.TrimSuffix(replyText, "\n```")
+			replyText = strings.TrimSuffix(replyText, "```")
+			replyText = strings.ReplaceAll(replyText, ",]", "]")
+			replyText = strings.ReplaceAll(replyText, ", }", "}")
+			replyText = strings.ReplaceAll(replyText, ",}", "}")
+			replyText = strings.ReplaceAll(replyText, " \n", "")
 
 			exps, errParse := tools.ParseExpensesJSON(replyText)
 			if errParse == nil {
