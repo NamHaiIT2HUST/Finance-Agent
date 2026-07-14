@@ -323,13 +323,66 @@ async function fetchAdminData() {
                     <strong style="display:block">${u.full_name} ${roleBadge}</strong>
                     <small style="color:var(--text-secondary)">@${u.username} • ${u.tx_count} giao dịch</small>
                 </div>
-                ${u.role !== 'admin' ? `<button class="del-btn" onclick="deleteUser(${u.id})">Xóa</button>` : ''}
+                <div style="display: flex; gap: 8px;">
+                    ${u.role !== 'admin' ? `<button class="icon-btn" style="padding: 4px 10px; font-size: 0.8rem;" onclick="viewUserData(${u.id}, '${u.full_name}')">👁️ Xem</button>` : ''}
+                    ${u.role !== 'admin' ? `<button class="del-btn" onclick="deleteUser(${u.id})">Xóa</button>` : ''}
+                </div>
             `;
             listEl.appendChild(item);
         });
     } catch (e) {
         console.error("Lỗi lấy data admin", e);
     }
+}
+
+// Admin View User Mode
+let isAdminViewingUser = false;
+
+async function viewUserData(userId, userName) {
+    const token = localStorage.getItem('jwt_token');
+    try {
+        const res = await fetch(`/api/admin/users?user_id=${userId}`, {
+            headers: { 'Authorization': 'Bearer ' + token }
+        });
+        if (res.status !== 200) {
+            alert('Lỗi lấy dữ liệu người dùng');
+            return;
+        }
+        const data = await res.json();
+        
+        isAdminViewingUser = true;
+        expenses = data || [];
+        
+        // Cập nhật nhãn và thay đổi giao diện để Admin biết đang ở chế độ xem
+        document.getElementById('userNameDisplay').innerHTML = `<span style="color: var(--color-expense); font-weight: bold;">🔴 Đang xem tài khoản: ${userName}</span> <button class="del-btn" style="margin-left: 10px;" onclick="exitViewMode()">Thoát Xem</button>`;
+        
+        // Vô hiệu hóa Chat bằng cách ẩn input
+        const chatInputArea = document.querySelector('.chat-input');
+        if (chatInputArea) chatInputArea.style.display = 'none';
+
+        // Chuyển về Dashboard để xem dữ liệu
+        switchTab('dashboard');
+        updateDashboard();
+    } catch (e) {
+        console.error('Lỗi khi xem tài khoản:', e);
+    }
+}
+
+function exitViewMode() {
+    isAdminViewingUser = false;
+    
+    // Khôi phục nhãn
+    document.getElementById('userNameDisplay').innerText = localStorage.getItem('full_name') || 'User';
+    
+    // Mở lại Chat
+    const chatInputArea = document.querySelector('.chat-input');
+    if (chatInputArea) chatInputArea.style.display = 'flex';
+    
+    // Tải lại dữ liệu gốc của Admin
+    fetchData();
+    
+    // Quay lại tab Quản lý
+    switchTab('admin');
 }
 
 async function deleteUser(id) {

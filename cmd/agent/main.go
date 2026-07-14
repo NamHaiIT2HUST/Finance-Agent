@@ -286,6 +286,26 @@ TUYỆT ĐỐI trả về mảng JSON hợp lệ. Không giải thích gì thêm
 		}
 
 		if r.Method == "GET" {
+			// Nếu có tham số user_id thì trả về expenses của user đó (tính năng Admin soi tài khoản)
+			userIDStr := r.URL.Query().Get("user_id")
+			if userIDStr != "" {
+				targetUserID, err := strconv.Atoi(userIDStr)
+				if err != nil {
+					http.Error(w, `{"error": "ID không hợp lệ"}`, http.StatusBadRequest)
+					return
+				}
+				
+				// Lấy expenses của user mục tiêu
+				exps, err := db.GetExpensesByUser(targetUserID)
+				if err != nil {
+					http.Error(w, `{"error": "Không thể lấy dữ liệu chi tiêu"}`, http.StatusInternalServerError)
+					return
+				}
+				json.NewEncoder(w).Encode(exps)
+				return
+			}
+
+			// Không có user_id thì trả về danh sách tất cả user
 			users, err := db.GetAllUsers()
 			if err != nil {
 				http.Error(w, `{"error": "Lỗi lấy dữ liệu"}`, http.StatusInternalServerError)
@@ -298,7 +318,7 @@ TUYỆT ĐỐI trả về mảng JSON hợp lệ. Không giải thích gì thêm
 			}
 			json.NewDecoder(r.Body).Decode(&payload)
 			if payload.ID == user.UserID {
-				http.Error(w, `{"error": "Không thể xóa chính mình"}`, http.StatusBadRequest)
+				http.Error(w, `{"error": "Không thể tự xóa chính mình"}`, http.StatusBadRequest)
 				return
 			}
 			err := db.DeleteUser(payload.ID)
