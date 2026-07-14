@@ -175,13 +175,11 @@ Không giải thích gì thêm.`),
 				// Gọi AI viết báo cáo
 				prompt := fmt.Sprintf("Tôi vừa kết thúc tháng %s. Tổng thu: %d, Tổng chi: %d, Số dư: %d. Hãy viết báo cáo tài chính cuối tháng súc tích, chuyên nghiệp bằng tiếng Việt.", today.Format("01/2006"), totalIncome, totalExpense, netBalance)
 				
-				origInst := model.SystemInstruction
-				model.SystemInstruction = &genai.Content{Parts: []genai.Part{genai.Text("Bạn là chuyên gia tài chính. Trả lời ngắn gọn.")}}
-				model.ResponseMIMEType = "text/plain"
-				resp, errAI := model.GenerateContent(ctx, genai.Text(prompt))
-				model.SystemInstruction = origInst
-				model.ResponseMIMEType = "application/json"
-
+				cronModel := aiClient.GenerativeModel("gemini-3.5-flash")
+				cronModel.SystemInstruction = &genai.Content{Parts: []genai.Part{genai.Text("Bạn là chuyên gia tài chính. Trả lời ngắn gọn.")}}
+				cronModel.ResponseMIMEType = "text/plain"
+				resp, errAI := cronModel.GenerateContent(ctx, genai.Text(prompt))
+				
 				aiText := ""
 				if errAI == nil && resp != nil {
 					for _, part := range resp.Candidates[0].Content.Parts {
@@ -384,20 +382,16 @@ Không giải thích gì thêm.`),
 
 			bot.Send(tgbotapi.NewChatAction(update.Message.Chat.ID, tgbotapi.ChatTyping))
 
-			// Tạm đổi System Instruction cho báo cáo
-			originalInstruction := model.SystemInstruction
-			model.SystemInstruction = &genai.Content{
+			// Dùng model mới cho báo cáo
+			reportModel := aiClient.GenerativeModel("gemini-3.5-flash")
+			reportModel.SystemInstruction = &genai.Content{
 				Parts: []genai.Part{
 					genai.Text("Bạn là một chuyên gia tư vấn tài chính cá nhân. Hãy viết báo cáo ngắn gọn, thân thiện bằng tiếng Việt."),
 				},
 			}
-			model.ResponseMIMEType = "text/plain"
+			reportModel.ResponseMIMEType = "text/plain"
 
-			resp, err := model.GenerateContent(ctx, genai.Text(reportPrompt))
-
-			// Khôi phục Instruction
-			model.SystemInstruction = originalInstruction
-			model.ResponseMIMEType = "application/json"
+			resp, err := reportModel.GenerateContent(ctx, genai.Text(reportPrompt))
 
 			var aiInsight string
 			if err != nil {
@@ -547,23 +541,18 @@ Không giải thích gì thêm.`),
 				continue
 			}
 
-			// Gửi Prompt kèm theo dữ liệu cho Gemini
+			// Gửi Prompt kèm theo dữ liệu cho Gemini bằng model riêng
 			askPrompt := fmt.Sprintf("Dưới đây là dữ liệu tài chính cá nhân của tôi định dạng CSV.\n\nCâu hỏi: %s\n\nDữ liệu CSV:\n%s", question, string(csvBytes))
 
-			// Tạm đổi System Instruction
-			originalInstruction := model.SystemInstruction
-			model.SystemInstruction = &genai.Content{
+			askModel := aiClient.GenerativeModel("gemini-3.5-flash")
+			askModel.SystemInstruction = &genai.Content{
 				Parts: []genai.Part{
 					genai.Text("Bạn là một chuyên gia kế toán. Hãy phân tích bảng dữ liệu CSV được cung cấp và trả lời câu hỏi của người dùng. Trả lời cực kỳ ngắn gọn, chính xác bằng tiếng Việt. Nếu dữ liệu không có, hãy báo không tìm thấy."),
 				},
 			}
-			model.ResponseMIMEType = "text/plain"
+			askModel.ResponseMIMEType = "text/plain"
 
-			resp, err := model.GenerateContent(ctx, genai.Text(askPrompt))
-
-			// Khôi phục Instruction
-			model.SystemInstruction = originalInstruction
-			model.ResponseMIMEType = "application/json"
+			resp, err := askModel.GenerateContent(ctx, genai.Text(askPrompt))
 
 			var replyText string
 			if err != nil {
