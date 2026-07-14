@@ -89,7 +89,8 @@ body {
 .logout-tab { color: var(--color-expense); }
 
 .split-layout { display: flex; flex: 1; overflow: hidden; gap: 20px; padding: 20px; }
-.dashboard-panel, .chat-panel, .admin-panel { flex: 1; display: flex; flex-direction: column; gap: 20px; overflow-y: auto; padding-right: 10px; }
+.dashboard-panel, .admin-panel { flex: 1; display: flex; flex-direction: column; gap: 20px; overflow-y: auto; padding-right: 10px; }
+.chat-panel { flex: 1; display: flex; flex-direction: column; gap: 10px; overflow: hidden; padding-right: 10px; }
 
 /* Header Elements */
 .header { display: flex; justify-content: space-between; align-items: center; }
@@ -135,7 +136,8 @@ body {
 @media (max-width: 768px) {
     .split-layout { flex-direction: column; padding: 0; gap: 0; }
     .mobile-tabs { display: flex; }
-    .dashboard-panel, .chat-panel, .admin-panel { padding: 20px; display: none; height: 100%; }
+    .dashboard-panel, .admin-panel { padding: 20px; display: none; height: 100%; overflow-y: auto; }
+    .chat-panel { padding: 10px; display: none; height: 100%; overflow: hidden; }
     .active-tab { display: flex !important; }
 }
 
