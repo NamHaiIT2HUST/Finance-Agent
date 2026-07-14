@@ -1,9 +1,10 @@
 package db
 
 import (
+	"errors"
 	"log"
 	"os"
-	"errors"
+	"time"
 
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/driver/postgres"
@@ -20,6 +21,15 @@ type User struct {
 	PasswordHash string    `json:"-"`
 	Role         string    `json:"role" gorm:"default:'user'"`
 	Expenses     []Expense `json:"-" gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE;"`
+	Messages     []Message `json:"-" gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE;"`
+}
+
+type Message struct {
+	ID        int       `json:"id" gorm:"primaryKey"`
+	UserID    int       `json:"user_id" gorm:"index"`
+	IsUser    bool      `json:"is_user"` // true for user, false for AI
+	Text      string    `json:"text"`
+	CreatedAt time.Time `json:"created_at" gorm:"autoCreateTime"`
 }
 
 type Expense struct {
@@ -61,7 +71,7 @@ func InitDB(filepath string) {
 	}
 
 	// Tự động tạo/cập nhật bảng
-	err = DB.AutoMigrate(&User{}, &Expense{})
+	err = DB.AutoMigrate(&User{}, &Expense{}, &Message{})
 	if err != nil {
 		log.Fatal("Lỗi Migrate DB:", err)
 	}
@@ -159,4 +169,20 @@ func GetExpensesByUser(userID int) ([]Expense, error) {
 	var expenses []Expense
 	err := DB.Where("user_id = ?", userID).Order("date ASC, id ASC").Find(&expenses).Error
 	return expenses, err
+}
+
+// Message Methods
+func SaveMessage(userID int, isUser bool, text string) error {
+	msg := Message{
+		UserID: userID,
+		IsUser: isUser,
+		Text:   text,
+	}
+	return DB.Create(&msg).Error
+}
+
+func GetMessagesByUser(userID int) ([]Message, error) {
+	var messages []Message
+	err := DB.Where("user_id = ?", userID).Order("created_at ASC").Find(&messages).Error
+	return messages, err
 }

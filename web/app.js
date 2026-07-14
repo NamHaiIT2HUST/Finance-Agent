@@ -119,7 +119,8 @@ function logout() {
     if (document.getElementById('adminUsersList')) {
         document.getElementById('adminUsersList').innerHTML = '';
     }
-    clearChat(); // Dọn sạch tin nhắn
+    clearChat(); // Đặt lại khung chat mặc định
+
 
     // Reset về form đăng nhập
     document.getElementById('loginForm').style.display = 'block';
@@ -281,6 +282,34 @@ function updateStats() {
     });
 }
 
+const loadChatHistory = async (targetUserId = null) => {
+    const token = localStorage.getItem('jwt_token');
+    if (!token) return;
+
+    let url = '/api/chat/history';
+    if (targetUserId) {
+        url += `?user_id=${targetUserId}`;
+    }
+
+    try {
+        const response = await fetch(url, {
+            headers: { 'Authorization': 'Bearer ' + token }
+        });
+        if (response.status !== 200) return;
+        
+        const messages = await response.json();
+        clearChat(); // Xóa tin nhắn mặc định
+
+        if (messages && messages.length > 0) {
+            messages.forEach(msg => {
+                appendMessage(msg.text, msg.is_user);
+            });
+        }
+    } catch (error) {
+        console.error('Lỗi fetch chat history:', error);
+    }
+};
+
 // Fetch Data
 const fetchData = async () => {
     const token = localStorage.getItem('jwt_token');
@@ -295,6 +324,9 @@ const fetchData = async () => {
         const data = await response.json();
         expenses = data || [];
         updateDashboard();
+        
+        // Tải lịch sử chat của chính mình
+        loadChatHistory();
     } catch (error) {
         console.error('Lỗi fetch data:', error);
     }
@@ -360,6 +392,9 @@ async function viewUserData(userId, userName) {
         // Chuyển về Dashboard để xem dữ liệu
         switchTab('dashboard');
         updateDashboard();
+        
+        // Tải lịch sử chat của user đang soi
+        loadChatHistory(userId);
     } catch (e) {
         console.error('Lỗi khi xem tài khoản:', e);
     }
@@ -606,8 +641,7 @@ if (savedTheme === 'dark') {
 }
 
 themeToggle.addEventListener('click', () => {
-    const isDark = document.body.getAttribute('data-theme') === 'dark';
-    if (isDark) {
+    if (document.body.getAttribute('data-theme') === 'dark') {
         document.body.removeAttribute('data-theme');
         localStorage.setItem('theme', 'light');
         themeToggle.innerText = '🌙';
@@ -616,7 +650,19 @@ themeToggle.addEventListener('click', () => {
         localStorage.setItem('theme', 'dark');
         themeToggle.innerText = '☀️';
     }
-    if (chartInstance) updateDashboard();
+    
+    // Cập nhật lại màu chữ cho các biểu đồ
+    setTimeout(() => {
+        const textColor = getComputedStyle(document.body).getPropertyValue('--text-primary');
+        if (chartInstance) {
+            chartInstance.options.plugins.legend.labels.color = textColor;
+            chartInstance.update();
+        }
+        if (statsChartInstance) {
+            statsChartInstance.options.plugins.legend.labels.color = textColor;
+            statsChartInstance.update();
+        }
+    }, 50);
 });
 
 // Khởi tạo ban đầu

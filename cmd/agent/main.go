@@ -186,6 +186,17 @@ func main() {
 			return
 		}
 
+		// Lưu tin nhắn của User vào DB
+		savedUserText := userText
+		if errFile == nil {
+			if r.FormValue("text") == "" {
+				savedUserText = "📷 Đã gửi một ảnh"
+			} else {
+				savedUserText = "📷 Đã gửi một ảnh: " + r.FormValue("text")
+			}
+		}
+		db.SaveMessage(user.UserID, true, savedUserText)
+
 		promptParts = append(promptParts, genai.Text(userText))
 
 		model := aiClient.GenerativeModel("gemini-3.5-flash")
@@ -228,6 +239,7 @@ TUYỆT ĐỐI trả về mảng JSON hợp lệ. Không giải thích gì thêm
 			if strings.Contains(errGen.Error(), "429") || strings.Contains(errGen.Error(), "Quota") {
 				errMsg = "Hệ thống AI đang quá tải, vui lòng thử lại sau."
 			}
+			db.SaveMessage(user.UserID, false, errMsg)
 			json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "reply": errMsg})
 			return
 		}
@@ -250,7 +262,9 @@ TUYỆT ĐỐI trả về mảng JSON hợp lệ. Không giải thích gì thêm
 
 		exps, errParse := tools.ParseExpensesJSON(replyText)
 		if errParse != nil {
-			json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "reply": "Lỗi đọc JSON: " + errParse.Error()})
+			errMsg := "Lỗi đọc JSON: " + errParse.Error()
+			db.SaveMessage(user.UserID, false, errMsg)
+			json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "reply": errMsg})
 			return
 		}
 
@@ -276,7 +290,36 @@ TUYỆT ĐỐI trả về mảng JSON hợp lệ. Không giải thích gì thêm
 		}
 		replyStr += fmt.Sprintf("\n💰 Tổng cộng: %d đ", totalAdded)
 
+		db.SaveMessage(user.UserID, false, replyStr)
 		json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "reply": replyStr, "expenses": finalExps})
+	})
+
+	// History API
+	http.HandleFunc("/api/chat/history", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		user, errAuth := getAuthUser(r)
+		if errAuth != nil {
+			http.Error(w, `{"error": "Unauthorized"}`, http.StatusUnauthorized)
+			return
+		}
+
+		targetUserID := user.UserID
+		if user.Role == "admin" {
+			uidStr := r.URL.Query().Get("user_id")
+			if uidStr != "" {
+				uid, err := strconv.Atoi(uidStr)
+				if err == nil {
+					targetUserID = uid
+				}
+			}
+		}
+
+		messages, err := db.GetMessagesByUser(targetUserID)
+		if err != nil {
+			http.Error(w, `{"error": "Lỗi lấy lịch sử"}`, http.StatusInternalServerError)
+			return
+		}
+		json.NewEncoder(w).Encode(messages)
 	})
 
 	// Admin API
