@@ -3,20 +3,36 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Finance App</title>
+    <title>SaaS Finance AI</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <!-- Login Modal -->
-    <div id="loginModal" class="modal-overlay">
-        <div class="glass-panel modal-content">
-            <h2>Đăng Nhập</h2>
-            <p>Vui lòng nhập Passcode để tiếp tục</p>
-            <input type="password" id="passcodeInput" placeholder="Nhập mã bảo vệ...">
-            <button id="loginBtn" class="primary-btn">Vào Dashboard</button>
-            <p id="loginError" class="error-text" style="display: none;">Sai mật khẩu!</p>
+    <!-- Auth Screen -->
+    <div id="authScreen" class="auth-container">
+        <div class="glass-panel auth-card">
+            <h1 class="brand-title">Finance AI 📈</h1>
+            <p class="brand-subtitle">Quản lý tài chính cá nhân thông minh</p>
+            
+            <div id="loginForm">
+                <h3>Đăng nhập</h3>
+                <input type="text" id="loginUsername" placeholder="Tên đăng nhập">
+                <input type="password" id="loginPassword" placeholder="Mật khẩu">
+                <button onclick="handleLogin()" class="primary-btn">Vào Dashboard</button>
+                <p id="loginError" class="error-text" style="display: none;"></p>
+                <p class="switch-auth">Chưa có tài khoản? <span onclick="toggleAuth()">Đăng ký ngay</span></p>
+            </div>
+
+            <div id="registerForm" style="display: none;">
+                <h3>Đăng ký tài khoản</h3>
+                <input type="text" id="regUsername" placeholder="Tên đăng nhập mới">
+                <input type="password" id="regPassword" placeholder="Mật khẩu bảo mật">
+                <button onclick="handleRegister()" class="primary-btn">Tạo Tài Khoản</button>
+                <p id="regError" class="error-text" style="display: none;"></p>
+                <p id="regSuccess" class="success-text" style="display: none;">Đăng ký thành công! Đang đăng nhập...</p>
+                <p class="switch-auth">Đã có tài khoản? <span onclick="toggleAuth()">Đăng nhập</span></p>
+            </div>
         </div>
     </div>
 
@@ -25,8 +41,9 @@
         
         <!-- Mobile Tabs -->
         <div class="mobile-tabs">
-            <button class="tab-btn active" onclick="switchTab('dashboard')">📊 Dashboard</button>
-            <button class="tab-btn" onclick="switchTab('chat')">💬 Chat AI</button>
+            <button class="tab-btn active" onclick="switchTab('dashboard')">📊 Tổng quan</button>
+            <button class="tab-btn" onclick="switchTab('chat')">💬 Trợ lý AI</button>
+            <button class="tab-btn logout-tab" onclick="logout()">🚪 Thoát</button>
         </div>
 
         <div class="split-layout">
@@ -34,10 +51,13 @@
             <div id="dashboardTab" class="dashboard-panel active-tab">
                 <header class="glass-panel header">
                     <div class="user-info">
-                        <h1 id="userName">Tổng quan</h1>
-                        <p>Tình hình tài chính hiện tại</p>
+                        <h1>Xin chào, <span id="userNameDisplay">User</span>!</h1>
+                        <p>Tình hình tài chính hiện tại của bạn</p>
                     </div>
-                    <div id="themeToggle" class="theme-btn">🌙</div>
+                    <div class="header-actions">
+                        <div id="themeToggle" class="icon-btn">🌙</div>
+                        <div class="icon-btn logout-btn" onclick="logout()" title="Đăng xuất">🚪</div>
+                    </div>
                 </header>
 
                 <div class="summary-grid">
@@ -64,7 +84,7 @@
 
                 <section class="glass-panel transactions-section">
                     <div class="section-header">
-                        <h2>Giao dịch gần đây</h2>
+                        <h2>Lịch sử Giao dịch</h2>
                         <span class="badge" id="txCount">0</span>
                     </div>
                     <div id="transactionsList" class="transactions-list">
@@ -95,7 +115,7 @@
                         <label for="imageUpload" class="upload-btn" title="Tải ảnh hóa đơn">📸</label>
                         <input type="file" id="imageUpload" accept="image/*" style="display: none;" onchange="previewImage(event)">
                         
-                        <input type="text" id="chatInput" placeholder="Nhắn tin (VD: Ăn sáng 30k)..." autocomplete="off">
+                        <input type="text" id="chatInput" placeholder="Nhắn tin (VD: Mua trà sữa 50k)..." autocomplete="off">
                         <button type="submit" class="send-btn">➤</button>
                     </form>
                 </div>

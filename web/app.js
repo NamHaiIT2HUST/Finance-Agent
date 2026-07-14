@@ -2,13 +2,105 @@ let expenses = [];
 let chartInstance = null;
 
 // DOM Elements
-const loginModal = document.getElementById('loginModal');
+const authScreen = document.getElementById('authScreen');
 const appUI = document.getElementById('appUI');
-const passcodeInput = document.getElementById('passcodeInput');
-const loginBtn = document.getElementById('loginBtn');
-const loginError = document.getElementById('loginError');
+const loginForm = document.getElementById('loginForm');
+const registerForm = document.getElementById('registerForm');
 
-// Tab Switching (Mobile)
+function toggleAuth() {
+    if (loginForm.style.display === 'none') {
+        loginForm.style.display = 'block';
+        registerForm.style.display = 'none';
+    } else {
+        loginForm.style.display = 'none';
+        registerForm.style.display = 'block';
+    }
+}
+
+async function handleLogin() {
+    const user = document.getElementById('loginUsername').value;
+    const pass = document.getElementById('loginPassword').value;
+    const errEl = document.getElementById('loginError');
+    
+    try {
+        const res = await fetch('/api/login', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({username: user, password: pass})
+        });
+        const data = await res.json();
+        
+        if (data.success) {
+            localStorage.setItem('jwt_token', data.token);
+            localStorage.setItem('username', data.user.username);
+            document.getElementById('userNameDisplay').innerText = data.user.username;
+            authScreen.style.display = 'none';
+            appUI.style.display = 'flex';
+            fetchData();
+        } else {
+            errEl.innerText = data.error || 'Đăng nhập thất bại';
+            errEl.style.display = 'block';
+        }
+    } catch (e) {
+        errEl.innerText = 'Lỗi kết nối máy chủ';
+        errEl.style.display = 'block';
+    }
+}
+
+async function handleRegister() {
+    const user = document.getElementById('regUsername').value;
+    const pass = document.getElementById('regPassword').value;
+    const errEl = document.getElementById('regError');
+    const succEl = document.getElementById('regSuccess');
+    
+    try {
+        const res = await fetch('/api/register', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({username: user, password: pass})
+        });
+        const data = await res.json();
+        
+        if (data.success) {
+            errEl.style.display = 'none';
+            succEl.style.display = 'block';
+            setTimeout(() => {
+                document.getElementById('loginUsername').value = user;
+                document.getElementById('loginPassword').value = pass;
+                toggleAuth();
+                handleLogin();
+            }, 1000);
+        } else {
+            errEl.innerText = data.error || 'Đăng ký thất bại';
+            errEl.style.display = 'block';
+        }
+    } catch (e) {
+        errEl.innerText = 'Lỗi kết nối máy chủ';
+        errEl.style.display = 'block';
+    }
+}
+
+function logout() {
+    localStorage.removeItem('jwt_token');
+    localStorage.removeItem('username');
+    authScreen.style.display = 'flex';
+    appUI.style.display = 'none';
+}
+
+function checkLogin() {
+    const token = localStorage.getItem('jwt_token');
+    if (token) {
+        authScreen.style.display = 'none';
+        appUI.style.display = 'flex';
+        document.getElementById('userNameDisplay').innerText = localStorage.getItem('username') || 'User';
+        fetchData();
+    } else {
+        authScreen.style.display = 'flex';
+        appUI.style.display = 'none';
+    }
+}
+
+// Tab Switching
 function switchTab(tabId) {
     document.querySelectorAll('.dashboard-panel, .chat-panel').forEach(el => el.classList.remove('active-tab'));
     document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
@@ -17,55 +109,15 @@ function switchTab(tabId) {
     event.target.classList.add('active');
 }
 
-// Authentication
-async function checkLogin() {
-    const pwd = localStorage.getItem('web_password') || '';
-    
-    try {
-        const res = await fetch('/api/login', {
-            headers: { 'Authorization': 'Bearer ' + pwd }
-        });
-        const data = await res.json();
-        
-        if (data.success) {
-            loginModal.style.display = 'none';
-            appUI.style.display = 'flex';
-            fetchData();
-        } else {
-            loginModal.style.display = 'flex';
-            appUI.style.display = 'none';
-        }
-    } catch (e) {
-        // Trừ khi network error, mặc định cho hiện Modal
-        loginModal.style.display = 'flex';
-    }
-}
-
-loginBtn.addEventListener('click', () => {
-    localStorage.setItem('web_password', passcodeInput.value);
-    checkLogin().then(() => {
-        if (loginModal.style.display !== 'none') {
-            loginError.style.display = 'block';
-        } else {
-            loginError.style.display = 'none';
-        }
-    });
-});
-
-passcodeInput.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') loginBtn.click();
-});
-
 // Fetch Data
 const fetchData = async () => {
-    const pwd = localStorage.getItem('web_password') || '';
+    const token = localStorage.getItem('jwt_token');
     try {
         const response = await fetch('/api/expenses', {
-            headers: { 'Authorization': 'Bearer ' + pwd }
+            headers: { 'Authorization': 'Bearer ' + token }
         });
         if (response.status === 401) {
-            localStorage.removeItem('web_password');
-            checkLogin();
+            logout();
             return;
         }
         const data = await response.json();
@@ -76,7 +128,7 @@ const fetchData = async () => {
     }
 };
 
-// Update Dashboard (Chart & List)
+// Update Dashboard
 const updateDashboard = () => {
     let totalIncome = 0;
     let totalExpense = 0;
@@ -98,10 +150,9 @@ const updateDashboard = () => {
     document.getElementById('netBalance').innerText = formatVND(totalIncome - totalExpense);
     document.getElementById('txCount').innerText = expenses.length;
 
-    // Render Transactions
     const listEl = document.getElementById('transactionsList');
     listEl.innerHTML = '';
-    const recent = [...expenses].reverse().slice(0, 10);
+    const recent = [...expenses].reverse().slice(0, 15);
     
     if (recent.length === 0) {
         listEl.innerHTML = '<p style="text-align:center; color:var(--text-secondary)">Chưa có giao dịch nào.</p>';
@@ -126,7 +177,6 @@ const updateDashboard = () => {
         listEl.appendChild(item);
     });
 
-    // Render Chart
     const ctx = document.getElementById('expenseChart').getContext('2d');
     if (chartInstance) chartInstance.destroy();
 
@@ -144,11 +194,7 @@ const updateDashboard = () => {
         type: 'doughnut',
         data: {
             labels: labels,
-            datasets: [{
-                data: data,
-                backgroundColor: bgColors,
-                borderWidth: 0
-            }]
+            datasets: [{ data: data, backgroundColor: bgColors, borderWidth: 0 }]
         },
         options: {
             responsive: true,
@@ -224,20 +270,20 @@ chatForm.addEventListener('submit', async (e) => {
     chatInput.value = '';
     removeImage();
     
-    appendMessage("⏳ Đang suy nghĩ...", false);
+    appendMessage("⏳ AI đang ghi sổ...", false);
     const typingMsg = chatHistory.lastElementChild;
 
     try {
-        const pwd = localStorage.getItem('web_password') || '';
+        const token = localStorage.getItem('jwt_token');
         const res = await fetch('/api/chat', {
             method: 'POST',
-            headers: { 'Authorization': 'Bearer ' + pwd },
+            headers: { 'Authorization': 'Bearer ' + token },
             body: formData
         });
         
         if (res.status === 401) {
             typingMsg.remove();
-            appendMessage("❌ Phiên đăng nhập hết hạn, vui lòng tải lại trang.", false);
+            appendMessage("❌ Phiên đăng nhập hết hạn, vui lòng đăng xuất và đăng nhập lại.", false);
             return;
         }
 
@@ -246,7 +292,7 @@ chatForm.addEventListener('submit', async (e) => {
         
         if (data.success) {
             appendMessage(data.reply, false);
-            if (data.expenses) {
+            if (data.expenses && data.expenses.length > 0) {
                 expenses = [...expenses, ...data.expenses];
                 updateDashboard();
             }

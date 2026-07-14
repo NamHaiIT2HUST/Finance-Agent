@@ -8,36 +8,51 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
+	"github.com/NAMHAIIT2HUST/Finance-Agent/internal/db"
 	"github.com/NAMHAIIT2HUST/Finance-Agent/internal/tools"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/generative-ai-go/genai"
 	"github.com/joho/godotenv"
 	"google.golang.org/api/option"
 )
 
-// Check Web Password
-func checkAuth(r *http.Request) bool {
-	expectedPwd := os.Getenv("WEB_PASSWORD")
-	if expectedPwd == "" {
-		return true // No password set
-	}
+var jwtKey = []byte("super_secret_finance_key_2026")
+
+type Claims struct {
+	UserID   int    `json:"user_id"`
+	Username string `json:"username"`
+	jwt.RegisteredClaims
+}
+
+// CheckAuth Middleware
+func getAuthUserID(r *http.Request) (int, error) {
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" {
-		return false
+		return 0, fmt.Errorf("missing token")
 	}
-	token := strings.TrimPrefix(authHeader, "Bearer ")
-	return token == expectedPwd
+	tokenStr := strings.TrimPrefix(authHeader, "Bearer ")
+	claims := &Claims{}
+	token, err := jwt.ParseWithClaims(tokenStr, claims, func(token *jwt.Token) (interface{}, error) {
+		return jwtKey, nil
+	})
+	if err != nil || !token.Valid {
+		return 0, fmt.Errorf("invalid token")
+	}
+	return claims.UserID, nil
 }
 
 func main() {
 	err := godotenv.Load()
 	if err != nil {
-		log.Println("Lưu ý: Không tìm thấy file .env (Bỏ qua vì đang chạy trên Cloud)")
+		log.Println("Lưu ý: Không tìm thấy file .env")
 	}
+
+	// Initialize SQLite Database
+	db.InitDB("./finance.db")
 
 	ctx := context.Background()
 	aiClient, err := genai.NewClient(ctx, option.WithAPIKey(os.Getenv("GEMINI_API_KEY")))
@@ -46,63 +61,106 @@ func main() {
 	}
 	defer aiClient.Close()
 
-	// API để xác thực
-	http.HandleFunc("/api/login", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
+	// API Đăng ký
+	http.HandleFunc("/api/register", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		if !checkAuth(r) {
-			http.Error(w, `{"success": false, "error": "Sai mật khẩu!"}`, http.StatusUnauthorized)
+		var creds struct {
+			Username string `json:"username"`
+			Password string `json:"password"`
+		}
+		json.NewDecoder(r.Body).Decode(&creds)
+
+		if creds.Username == "" || creds.Password == "" {
+			http.Error(w, `{"success": false, "error": "Thiếu username/password"}`, http.StatusBadRequest)
 			return
 		}
+
+		err := db.CreateUser(creds.Username, creds.Password)
+		if err != nil {
+			http.Error(w, `{"success": false, "error": "Tên đăng nhập đã tồn tại"}`, http.StatusConflict)
+			return
+		}
+
 		json.NewEncoder(w).Encode(map[string]bool{"success": true})
 	})
 
-	// API lấy danh sách chi tiêu
-	http.HandleFunc("/api/expenses", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
+	// API Đăng nhập
+	http.HandleFunc("/api/login", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		
-		if !checkAuth(r) {
+		var creds struct {
+			Username string `json:"username"`
+			Password string `json:"password"`
+		}
+		json.NewDecoder(r.Body).Decode(&creds)
+
+		user, err := db.GetUserByUsername(creds.Username)
+		if err != nil || !db.CheckPassword(user.Password, creds.Password) {
+			http.Error(w, `{"success": false, "error": "Sai thông tin đăng nhập"}`, http.StatusUnauthorized)
+			return
+		}
+
+		// Tạo JWT Token
+		expirationTime := time.Now().Add(24 * time.Hour)
+		claims := &Claims{
+			UserID:   user.ID,
+			Username: user.Username,
+			RegisteredClaims: jwt.RegisteredClaims{
+				ExpiresAt: jwt.NewNumericDate(expirationTime),
+			},
+		}
+		token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+		tokenString, _ := token.SignedString(jwtKey)
+
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": true,
+			"token":   tokenString,
+			"user":    map[string]interface{}{"id": user.ID, "username": user.Username},
+		})
+	})
+
+	// Lấy danh sách chi tiêu (của User đang đăng nhập)
+	http.HandleFunc("/api/expenses", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		userID, err := getAuthUserID(r)
+		if err != nil {
 			http.Error(w, `{"error": "Unauthorized"}`, http.StatusUnauthorized)
 			return
 		}
 
-		userSpreadsheet := os.Getenv("SPREADSHEET_ID")
-		expenses, err := tools.FetchExpensesFromSheet(userSpreadsheet)
+		expenses, err := db.GetExpensesByUser(userID)
 		if err != nil {
 			http.Error(w, `{"error": "Không thể tải dữ liệu"}`, http.StatusInternalServerError)
 			return
 		}
+		// Xử lý list rỗng để React/JS khỏi dính null
+		if expenses == nil {
+			expenses = []db.Expense{}
+		}
 		json.NewEncoder(w).Encode(expenses)
 	})
 
-	// API Chat & Xử lý hình ảnh
+	// API Chat & AI
 	http.HandleFunc("/api/chat", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Content-Type", "application/json")
-		
-		if !checkAuth(r) {
+		userID, errAuth := getAuthUserID(r)
+		if errAuth != nil {
 			http.Error(w, `{"error": "Unauthorized"}`, http.StatusUnauthorized)
 			return
 		}
 
-		err := r.ParseMultipartForm(10 << 20) // 10MB max
+		err := r.ParseMultipartForm(10 << 20)
 		if err != nil {
 			http.Error(w, `{"error": "Lỗi parse form"}`, http.StatusBadRequest)
 			return
 		}
 
 		userText := r.FormValue("text")
-		
 		var promptParts []genai.Part
 
-		// Xử lý file ảnh nếu có
 		file, header, errFile := r.FormFile("image")
 		if errFile == nil {
 			defer file.Close()
 			imgBytes, _ := io.ReadAll(file)
-			
-			// Detect MIME type
 			mimeType := "jpeg"
 			if strings.HasSuffix(strings.ToLower(header.Filename), ".png") {
 				mimeType = "png"
@@ -119,7 +177,6 @@ func main() {
 
 		promptParts = append(promptParts, genai.Text(userText))
 
-		// Khởi tạo Model
 		model := aiClient.GenerativeModel("gemini-3.5-flash")
 		model.SystemInstruction = &genai.Content{
 			Parts: []genai.Part{
@@ -132,14 +189,12 @@ Nhiệm vụ: Phân tích và CHỈ trả về một MẢNG (ARRAY) JSON, mỗi 
 - "category" (nhóm chi tiêu/thu nhập)
 - "description".
 Ví dụ: [{"date": "2023-10-25", "type": "Chi", "amount": 50000, "category": "Ăn uống", "description": "Phở"}, {"date": "2023-10-25", "type": "Chi", "amount": 10000, "category": "Ăn uống", "description": "Trà đá"}]
-TUYỆT ĐỐI trả về mảng JSON hợp lệ, KHÔNG có dấu phẩy thừa (trailing comma) ở phần tử cuối cùng.
-Không giải thích gì thêm.`),
+TUYỆT ĐỐI trả về mảng JSON hợp lệ. Không giải thích gì thêm.`),
 			},
 		}
 		model.ResponseMIMEType = "application/json"
 
 		resp, errGen := model.GenerateContent(ctx, promptParts...)
-		
 		if errGen != nil {
 			errMsg := "❌ Lỗi AI: " + errGen.Error()
 			if strings.Contains(errGen.Error(), "429") || strings.Contains(errGen.Error(), "Quota") {
@@ -168,51 +223,31 @@ Không giải thích gì thêm.`),
 			return
 		}
 
-		userSpreadsheet := os.Getenv("SPREADSHEET_ID")
-		errSheet := tools.AppendExpensesToSheet(userSpreadsheet, exps)
-		
-		if errSheet != nil {
-			json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "reply": "Lỗi Database: " + errSheet.Error()})
-			return
-		}
-
 		replyStr := "✅ Đã ghi vào sổ:\n"
 		totalAdded := 0
+		var finalExps []db.Expense
 		for _, exp := range exps {
-			replyStr += fmt.Sprintf("- [%s] %s - %d VND (%s)\n", exp.Type, exp.Description, exp.Amount, exp.Category)
+			dbExp := db.Expense{
+				UserID:      userID,
+				Date:        exp.Date,
+				Type:        exp.Type,
+				Amount:      exp.Amount,
+				Category:    exp.Category,
+				Description: exp.Description,
+			}
+			errSheet := db.AddExpense(userID, &dbExp)
+			if errSheet != nil {
+				continue
+			}
+			finalExps = append(finalExps, dbExp)
+			replyStr += fmt.Sprintf("- [%s] %s - %d đ (%s)\n", exp.Type, exp.Description, exp.Amount, exp.Category)
 			totalAdded += exp.Amount
 		}
-		replyStr += fmt.Sprintf("\n💰 Tổng cộng: %d VND", totalAdded)
+		replyStr += fmt.Sprintf("\n💰 Tổng cộng: %d đ", totalAdded)
 
-		// Cảnh báo ngân sách
-		budgetStr := os.Getenv("MONTHLY_BUDGET")
-		if budgetStr != "" {
-			if budget, errB := strconv.Atoi(budgetStr); errB == nil && budget > 0 {
-				allExps, errF := tools.FetchExpensesFromSheet(userSpreadsheet)
-				if errF == nil {
-					currentMonth := time.Now().Format("2006-01")
-					totalMonthExpense := 0
-					
-					for _, e := range allExps {
-						if (e.Type == "Chi" || e.Type == "chi" || e.Type == "") && strings.HasPrefix(e.Date, currentMonth) {
-							totalMonthExpense += e.Amount
-						}
-					}
-					
-					percent := float64(totalMonthExpense) / float64(budget) * 100
-					if percent >= 100 {
-						replyStr += fmt.Sprintf("\n\n🚨 BÁO ĐỘNG ĐỎ: Đã tiêu %d VND, vượt quá 100%% ngân sách tháng (%d VND)!", totalMonthExpense, budget)
-					} else if percent >= 90 {
-						replyStr += fmt.Sprintf("\n\n⚠️ CẢNH BÁO: Đã tiêu %d VND (%.1f%% ngân sách).", totalMonthExpense, percent)
-					}
-				}
-			}
-		}
-
-		json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "reply": replyStr, "expenses": exps})
+		json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "reply": replyStr, "expenses": finalExps})
 	})
 
-	// Phục vụ giao diện Web tĩnh
 	http.Handle("/", http.FileServer(http.Dir("./web")))
 
 	port := os.Getenv("PORT")
