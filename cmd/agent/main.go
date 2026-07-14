@@ -67,13 +67,115 @@ Không giải thích gì thêm.`),
 
 	// Đặt lịch vào 22:00 (10 giờ tối) mỗi ngày
 	_, errCron := c.AddFunc("0 22 * * *", func() {
-		chatIDStr := os.Getenv("CHAT_ID")
-		if chatIDStr != "" {
-			chatID, _ := strconv.ParseInt(chatIDStr, 10, 64)
-			msg := tgbotapi.NewMessage(chatID, "🔔 Ting ting! Hải ơi, cuối ngày rồi, xem lại xem hôm nay có khoản chi nào quên chưa đưa cho tôi nhập sổ không?")
-			bot.Send(msg)
-			log.Println("⏰ Đã gửi tin nhắn nhắc nhở theo lịch!")
+		// Lấy danh sách người dùng được cấp quyền
+		authUsers := os.Getenv("AUTHORIZED_USERS")
+		var chatIDs []int64
+		if authUsers != "" {
+			for _, idStr := range strings.Split(authUsers, ",") {
+				idStr = strings.TrimSpace(idStr)
+				if id, err := strconv.ParseInt(idStr, 10, 64); err == nil {
+					chatIDs = append(chatIDs, id)
+				}
+			}
+		} else {
+			if chatIDStr := os.Getenv("CHAT_ID"); chatIDStr != "" {
+				if id, err := strconv.ParseInt(chatIDStr, 10, 64); err == nil {
+					chatIDs = append(chatIDs, id)
+				}
+			}
 		}
+
+		today := time.Now().In(loc)
+		tomorrow := today.AddDate(0, 0, 1)
+		isLastDayOfMonth := today.Month() != tomorrow.Month()
+		isSunday := today.Weekday() == time.Sunday
+
+		for _, chatID := range chatIDs {
+			chatIDStr := strconv.FormatInt(chatID, 10)
+			userSpreadsheet := os.Getenv("SPREADSHEET_ID_" + chatIDStr)
+			if userSpreadsheet == "" {
+				userSpreadsheet = os.Getenv("SPREADSHEET_ID")
+			}
+
+			expenses, err := tools.FetchExpensesFromSheet(userSpreadsheet)
+			if err != nil {
+				continue
+			}
+
+			totalIncome := 0
+			totalExpense := 0
+			var reportText string
+
+			if isLastDayOfMonth {
+				// Báo cáo cuối tháng
+				currentMonth := today.Format("2006-01")
+				for _, e := range expenses {
+					if strings.HasPrefix(e.Date, currentMonth) {
+						if e.Type == "Thu" || e.Type == "thu" {
+							totalIncome += e.Amount
+						} else {
+							totalExpense += e.Amount
+						}
+					}
+				}
+				netBalance := totalIncome - totalExpense
+
+				// Gọi AI viết báo cáo
+				prompt := fmt.Sprintf("Tôi vừa kết thúc tháng %s. Tổng thu: %d, Tổng chi: %d, Số dư: %d. Hãy viết báo cáo tài chính cuối tháng súc tích, chuyên nghiệp bằng tiếng Việt.", today.Format("01/2006"), totalIncome, totalExpense, netBalance)
+				
+				origInst := model.SystemInstruction
+				model.SystemInstruction = &genai.Content{Parts: []genai.Part{genai.Text("Bạn là chuyên gia tài chính. Trả lời ngắn gọn.")}}
+				model.ResponseMIMEType = "text/plain"
+				resp, errAI := model.GenerateContent(ctx, genai.Text(prompt))
+				model.SystemInstruction = origInst
+				model.ResponseMIMEType = "application/json"
+
+				aiText := ""
+				if errAI == nil && resp != nil {
+					for _, part := range resp.Candidates[0].Content.Parts {
+						aiText += fmt.Sprintf("%v", part)
+					}
+				}
+				
+				reportText = fmt.Sprintf("🗓 **BÁO CÁO TÀI CHÍNH CUỐI THÁNG**\n\n🟢 Tổng Thu: %d đ\n🔴 Tổng Chi: %d đ\n💰 Số Dư: %d đ\n\n💡 Nhận xét từ AI:\n%s", totalIncome, totalExpense, netBalance, aiText)
+
+			} else if isSunday {
+				// Báo cáo cuối tuần
+				weekAgo := today.AddDate(0, 0, -6).Format("2006-01-02")
+				for _, e := range expenses {
+					if e.Date >= weekAgo && e.Date <= today.Format("2006-01-02") {
+						if e.Type == "Thu" || e.Type == "thu" {
+							totalIncome += e.Amount
+						} else {
+							totalExpense += e.Amount
+						}
+					}
+				}
+				reportText = fmt.Sprintf("📅 **BÁO CÁO CUỐI TUẦN**\n\nTuần qua bạn đã thu vào %d đ và chi tiêu %d đ.\nNghỉ ngơi thật tốt để chuẩn bị cho tuần mới nhé!", totalIncome, totalExpense)
+			} else {
+				// Báo cáo cuối ngày
+				todayStr := today.Format("2006-01-02")
+				for _, e := range expenses {
+					if e.Date == todayStr {
+						if e.Type == "Thu" || e.Type == "thu" {
+							totalIncome += e.Amount
+						} else {
+							totalExpense += e.Amount
+						}
+					}
+				}
+				if totalIncome == 0 && totalExpense == 0 {
+					reportText = "🔔 Ting ting! Hôm nay có vẻ bạn không phát sinh giao dịch nào. Nếu có quên thì nhập sổ đi nhé!"
+				} else {
+					reportText = fmt.Sprintf("🌙 **TỔNG KẾT HÔM NAY**\n\n🟢 Đã thu: %d đ\n🔴 Đã chi: %d đ\nBạn còn sót khoản nào chưa nhập không?", totalIncome, totalExpense)
+				}
+			}
+
+			msg := tgbotapi.NewMessage(chatID, reportText)
+			msg.ParseMode = "Markdown"
+			bot.Send(msg)
+		}
+		log.Println("⏰ Đã chạy lịch gửi báo cáo tự động!")
 	})
 
 	if errCron != nil {
