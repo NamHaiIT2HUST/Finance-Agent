@@ -152,8 +152,16 @@ body {
 
 /* Responsive */
 @media (max-width: 768px) {
-    .split-layout { flex-direction: column; padding: 0; gap: 0; }
-    .mobile-tabs { display: flex; }
+    .split-layout { flex-direction: column; padding: 0; gap: 0; order: 1; }
+    .mobile-tabs { 
+        display: flex; 
+        order: 2; 
+        border-top: 1px solid var(--glass-border); 
+        padding-bottom: max(10px, env(safe-area-inset-bottom)); 
+        position: sticky;
+        bottom: 0;
+        z-index: 100;
+    }
     .dashboard-panel, .admin-panel { padding: 20px; display: none; height: 100%; overflow-y: auto; }
     .chat-panel { padding: 10px; display: none; height: 100%; overflow: hidden; }
     .active-tab { display: flex !important; }
