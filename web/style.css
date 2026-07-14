@@ -43,6 +43,11 @@ body {
     border-radius: 20px;
     padding: 20px;
     box-shadow: var(--glass-shadow);
+    animation: fadeInUp 0.6s ease-out;
+}
+@keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
 }
 .glass-card {
     background: var(--glass-bg);
@@ -70,6 +75,12 @@ body {
 .auth-card input {
     width: 100%; padding: 12px; border-radius: 8px; border: 1px solid var(--glass-border);
     background: var(--bg-color); color: var(--text-primary); margin-bottom: 10px; font-size: 1rem;
+    transition: all 0.3s ease;
+}
+.auth-card input:focus {
+    outline: none;
+    border-color: var(--color-balance);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
 }
 .primary-btn {
     width: 100%; background: var(--color-balance); color: #fff; border: none; padding: 12px;
@@ -96,7 +107,9 @@ body {
 .header { display: flex; justify-content: space-between; align-items: center; }
 .header h1 { font-size: 1.3rem; font-weight: 700; background: linear-gradient(135deg, var(--color-balance), #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
 .header-actions { display: flex; gap: 10px; }
-.icon-btn, .reload-btn { cursor: pointer; background: var(--glass-bg); border: 1px solid var(--glass-border); padding: 8px 12px; border-radius: 12px; color: var(--text-primary); font-weight: 600; }
+.icon-btn, .reload-btn { cursor: pointer; background: var(--glass-bg); border: 1px solid var(--glass-border); padding: 8px 12px; border-radius: 12px; color: var(--text-primary); font-weight: 600; transition: all 0.2s ease; }
+.icon-btn:hover, .reload-btn:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+.icon-btn:active, .reload-btn:active { transform: translateY(0); }
 .logout-btn { color: var(--color-expense); }
 
 /* Dashboard Grids */
@@ -112,8 +125,10 @@ body {
 .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
 .badge { background: var(--color-balance); color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.8rem; font-weight: 600; }
 .transactions-list { display: flex; flex-direction: column; gap: 12px; }
-.transaction-item { display: flex; justify-content: space-between; align-items: center; padding: 12px; border-radius: 12px; background: rgba(0,0,0,0.03); }
+.transaction-item { display: flex; justify-content: space-between; align-items: center; padding: 12px; border-radius: 12px; background: rgba(0,0,0,0.03); transition: all 0.3s ease; }
+.transaction-item:hover { transform: translateX(5px); background: rgba(0,0,0,0.06); }
 [data-theme="dark"] .transaction-item { background: rgba(255,255,255,0.05); }
+[data-theme="dark"] .transaction-item:hover { background: rgba(255,255,255,0.08); }
 
 /* Chat UI */
 .chat-history { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 15px; padding: 10px; border-radius: 15px; }
@@ -129,8 +144,11 @@ body {
 
 .chat-form { display: flex; gap: 10px; align-items: center; }
 .upload-btn { font-size: 1.5rem; cursor: pointer; }
-.chat-form input[type="text"] { flex: 1; padding: 12px; border-radius: 20px; border: 1px solid var(--glass-border); background: var(--bg-color); color: var(--text-primary); font-size: 1rem; }
-.send-btn { background: var(--color-balance); color: white; border: none; width: 45px; height: 45px; border-radius: 50%; font-size: 1.2rem; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.chat-form input[type="text"] { flex: 1; padding: 12px; border-radius: 20px; border: 1px solid var(--glass-border); background: var(--bg-color); color: var(--text-primary); font-size: 1rem; transition: border-color 0.3s ease; }
+.chat-form input[type="text"]:focus { outline: none; border-color: var(--color-balance); }
+.send-btn { background: var(--color-balance); color: white; border: none; width: 45px; height: 45px; border-radius: 50%; font-size: 1.2rem; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s ease; }
+.send-btn:hover { transform: scale(1.1); box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4); }
+.send-btn:active { transform: scale(0.95); }
 
 /* Responsive */
 @media (max-width: 768px) {
