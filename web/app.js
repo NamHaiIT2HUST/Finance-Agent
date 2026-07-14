@@ -38,13 +38,9 @@ async function handleLogin() {
             
             document.getElementById('userNameDisplay').innerText = data.user.full_name;
             
-            if (data.user.role === 'admin') {
-                const navAdminBtn = document.getElementById('navAdminBtn');
-                if (navAdminBtn) navAdminBtn.style.display = 'block';
-            } else {
-                const navAdminBtn = document.getElementById('navAdminBtn');
-                if (navAdminBtn) navAdminBtn.style.display = 'none';
-            }
+            document.querySelectorAll('.admin-only').forEach(el => {
+                el.style.display = data.user.role === 'admin' ? 'block' : 'none';
+            });
 
             authScreen.style.display = 'none';
             appUI.style.display = 'flex';
@@ -139,13 +135,9 @@ function checkLogin() {
         appUI.style.display = 'flex';
         document.getElementById('userNameDisplay').innerText = localStorage.getItem('full_name') || 'User';
         
-        if (localStorage.getItem('role') === 'admin') {
-            const navAdminBtn = document.getElementById('navAdminBtn');
-            if (navAdminBtn) navAdminBtn.style.display = 'block';
-        } else {
-            const navAdminBtn = document.getElementById('navAdminBtn');
-            if (navAdminBtn) navAdminBtn.style.display = 'none';
-        }
+        document.querySelectorAll('.admin-only').forEach(el => {
+            el.style.display = localStorage.getItem('role') === 'admin' ? 'block' : 'none';
+        });
 
         fetchData();
     } else {

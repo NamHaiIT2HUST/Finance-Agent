@@ -46,7 +46,7 @@
             <div class="nav-links">
                 <button class="nav-btn active" onclick="switchTab('dashboard', event)" data-tab="dashboard">📊 Tổng quan</button>
                 <button class="nav-btn" onclick="switchTab('stats', event)" data-tab="stats">📈 Thống kê</button>
-                <button class="nav-btn" id="navAdminBtn" onclick="switchTab('admin', event)" data-tab="admin" style="display: none;">👑 Quản lý</button>
+                <button class="nav-btn admin-only" id="navAdminBtn" onclick="switchTab('admin', event)" data-tab="admin" style="display: none;">👑 Quản lý</button>
             </div>
             <div class="nav-actions">
                 <button class="icon-btn" id="themeToggle" title="Chế độ Tối/Sáng">🌙</button>
@@ -55,11 +55,12 @@
         </nav>
         
         <!-- Mobile Tabs -->
-        <div class="mobile-tabs">
-            <button class="tab-btn active" onclick="switchTab('dashboard', event)" data-tab="dashboard">📊 Tổng quan</button>
-            <button class="tab-btn" onclick="switchTab('stats', event)" data-tab="stats">📈 Thống kê</button>
-            <button class="tab-btn" onclick="switchTab('chat', event)" data-tab="chat">💬 Trợ lý AI</button>
-            <button class="tab-btn logout-tab" onclick="logout()">🚪 Thoát</button>
+        <div class="mobile-tabs" style="overflow-x: auto; white-space: nowrap; padding-bottom: 5px;">
+            <button class="tab-btn active" style="flex-shrink: 0;" onclick="switchTab('dashboard', event)" data-tab="dashboard">📊 Tổng quan</button>
+            <button class="tab-btn" style="flex-shrink: 0;" onclick="switchTab('stats', event)" data-tab="stats">📈 Thống kê</button>
+            <button class="tab-btn" style="flex-shrink: 0;" onclick="switchTab('chat', event)" data-tab="chat">💬 Trợ lý AI</button>
+            <button class="tab-btn admin-only" style="flex-shrink: 0; display: none;" onclick="switchTab('admin', event)" data-tab="admin">👑 Quản lý</button>
+            <button class="tab-btn logout-tab" style="flex-shrink: 0;" onclick="logout()">🚪 Thoát</button>
         </div>
 
         <div class="split-layout">
