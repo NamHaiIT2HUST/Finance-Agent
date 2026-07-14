@@ -1,203 +1,285 @@
-document.addEventListener('DOMContentLoaded', () => {
-    // Khởi tạo Telegram Web App
-    const tg = window.Telegram.WebApp;
-    tg.expand();
+let expenses = [];
+let chartInstance = null;
 
-    // Theme logic
-    const themeBtn = document.getElementById('themeToggle');
-    const root = document.documentElement;
-    const body = document.body;
+// DOM Elements
+const loginModal = document.getElementById('loginModal');
+const appUI = document.getElementById('appUI');
+const passcodeInput = document.getElementById('passcodeInput');
+const loginBtn = document.getElementById('loginBtn');
+const loginError = document.getElementById('loginError');
 
-    // Lấy theme mặc định từ Telegram hoặc localStorage
-    let currentTheme = localStorage.getItem('theme') || (tg.colorScheme === 'dark' ? 'dark' : 'light');
-    if (currentTheme === 'dark') {
-        root.setAttribute('data-theme', 'dark');
-        themeBtn.textContent = '☀️';
-    }
+// Tab Switching (Mobile)
+function switchTab(tabId) {
+    document.querySelectorAll('.dashboard-panel, .chat-panel').forEach(el => el.classList.remove('active-tab'));
+    document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+    
+    document.getElementById(tabId + 'Tab').classList.add('active-tab');
+    event.target.classList.add('active');
+}
 
-    themeBtn.addEventListener('click', () => {
-        if (root.getAttribute('data-theme') === 'dark') {
-            root.removeAttribute('data-theme');
-            localStorage.setItem('theme', 'light');
-            themeBtn.textContent = '🌙';
+// Authentication
+async function checkLogin() {
+    const pwd = localStorage.getItem('web_password') || '';
+    
+    try {
+        const res = await fetch('/api/login', {
+            headers: { 'Authorization': 'Bearer ' + pwd }
+        });
+        const data = await res.json();
+        
+        if (data.success) {
+            loginModal.style.display = 'none';
+            appUI.style.display = 'flex';
+            fetchData();
         } else {
-            root.setAttribute('data-theme', 'dark');
-            localStorage.setItem('theme', 'dark');
-            themeBtn.textContent = '☀️';
+            loginModal.style.display = 'flex';
+            appUI.style.display = 'none';
         }
-        if (expenseChart) updateChartTheme();
+    } catch (e) {
+        // Trừ khi network error, mặc định cho hiện Modal
+        loginModal.style.display = 'flex';
+    }
+}
+
+loginBtn.addEventListener('click', () => {
+    localStorage.setItem('web_password', passcodeInput.value);
+    checkLogin().then(() => {
+        if (loginModal.style.display !== 'none') {
+            loginError.style.display = 'block';
+        } else {
+            loginError.style.display = 'none';
+        }
+    });
+});
+
+passcodeInput.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') loginBtn.click();
+});
+
+// Fetch Data
+const fetchData = async () => {
+    const pwd = localStorage.getItem('web_password') || '';
+    try {
+        const response = await fetch('/api/expenses', {
+            headers: { 'Authorization': 'Bearer ' + pwd }
+        });
+        if (response.status === 401) {
+            localStorage.removeItem('web_password');
+            checkLogin();
+            return;
+        }
+        const data = await response.json();
+        expenses = data || [];
+        updateDashboard();
+    } catch (error) {
+        console.error('Lỗi fetch data:', error);
+    }
+};
+
+// Update Dashboard (Chart & List)
+const updateDashboard = () => {
+    let totalIncome = 0;
+    let totalExpense = 0;
+    const categoryTotals = {};
+
+    expenses.forEach(exp => {
+        if (exp.type === 'Thu' || exp.type === 'thu') {
+            totalIncome += exp.amount;
+        } else {
+            totalExpense += exp.amount;
+            categoryTotals[exp.category] = (categoryTotals[exp.category] || 0) + exp.amount;
+        }
     });
 
-    // Cập nhật tên user từ Telegram
-    const userNameEl = document.getElementById('userName');
-    if (tg.initDataUnsafe && tg.initDataUnsafe.user) {
-        userNameEl.textContent = `Xin chào, ${tg.initDataUnsafe.user.first_name}!`;
+    const formatVND = (num) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(num);
+
+    document.getElementById('totalIncome').innerText = formatVND(totalIncome);
+    document.getElementById('totalExpense').innerText = formatVND(totalExpense);
+    document.getElementById('netBalance').innerText = formatVND(totalIncome - totalExpense);
+    document.getElementById('txCount').innerText = expenses.length;
+
+    // Render Transactions
+    const listEl = document.getElementById('transactionsList');
+    listEl.innerHTML = '';
+    const recent = [...expenses].reverse().slice(0, 10);
+    
+    if (recent.length === 0) {
+        listEl.innerHTML = '<p style="text-align:center; color:var(--text-secondary)">Chưa có giao dịch nào.</p>';
     }
 
-    // Biến lưu trữ
-    let expensesData = [];
-    let expenseChart = null;
+    recent.forEach(exp => {
+        const item = document.createElement('div');
+        item.className = 'transaction-item glass-card';
+        const isIncome = (exp.type === 'Thu' || exp.type === 'thu');
+        const colorClass = isIncome ? 'positive' : 'negative';
+        const sign = isIncome ? '+' : '-';
+        
+        item.innerHTML = `
+            <div>
+                <strong style="display:block">${exp.description}</strong>
+                <small style="color:var(--text-secondary)">${exp.date} • ${exp.category}</small>
+            </div>
+            <div class="${colorClass}" style="font-weight:700">
+                ${sign}${formatVND(exp.amount)}
+            </div>
+        `;
+        listEl.appendChild(item);
+    });
 
-    // Format tiền tệ VNĐ
-    const formatCurrency = (amount) => {
-        return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount);
-    };
+    // Render Chart
+    const ctx = document.getElementById('expenseChart').getContext('2d');
+    if (chartInstance) chartInstance.destroy();
 
-    // Hàm gọi API lấy dữ liệu
-    const fetchData = async () => {
-        try {
-            // Gửi kèm initData để Backend kiểm chứng danh tính (Auth)
-            const response = await fetch('/api/expenses', {
-                headers: {
-                    'X-Telegram-Init-Data': tg.initData || ''
-                }
-            });
-            
-            if (response.status === 401 || response.status === 403) {
-                document.getElementById('transactionsList').innerHTML = `<div class="loading">⛔ Lỗi xác thực: Bạn không có quyền truy cập.</div>`;
-                return;
+    const labels = Object.keys(categoryTotals);
+    const data = Object.values(categoryTotals);
+    const bgColors = ['#ef4444', '#f59e0b', '#3b82f6', '#10b981', '#8b5cf6', '#ec4899', '#6366f1'];
+
+    if (labels.length === 0) {
+        labels.push('Chưa có dữ liệu');
+        data.push(1);
+        bgColors[0] = '#d1d5db';
+    }
+
+    chartInstance = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: labels,
+            datasets: [{
+                data: data,
+                backgroundColor: bgColors,
+                borderWidth: 0
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'right', labels: { color: getComputedStyle(document.body).getPropertyValue('--text-primary') } }
             }
-            
-            if (!response.ok) throw new Error('Network response was not ok');
-            
-            expensesData = await response.json();
-            
-            if (!expensesData) expensesData = [];
-            
-            // Xử lý dữ liệu fallback "Chi"
-            expensesData = expensesData.map(e => ({
-                ...e,
-                type: (e.type && e.type !== "") ? e.type : "Chi"
-            }));
-
-            updateDashboard();
-            renderTransactions();
-            renderChart();
-        } catch (error) {
-            console.error('Error fetching expenses:', error);
-            document.getElementById('transactionsList').innerHTML = `<div class="loading">❌ Lỗi tải dữ liệu. Vui lòng thử lại sau.</div>`;
         }
-    };
+    });
+};
 
-    const updateDashboard = () => {
-        let totalIncome = 0;
-        let totalExpense = 0;
+// Chat UI Logic
+const chatHistory = document.getElementById('chatHistory');
+const chatForm = document.getElementById('chatForm');
+const chatInput = document.getElementById('chatInput');
+const imageUpload = document.getElementById('imageUpload');
+const imagePreview = document.getElementById('imagePreview');
+const previewImg = document.getElementById('previewImg');
 
-        expensesData.forEach(exp => {
-            const isThu = exp.type.toLowerCase() === 'thu';
-            if (isThu) {
-                totalIncome += exp.amount;
-            } else {
-                totalExpense += exp.amount;
-            }
+let selectedFile = null;
+
+function appendMessage(text, isUser = false, imgUrl = null) {
+    const msgDiv = document.createElement('div');
+    msgDiv.className = `message ${isUser ? 'user-message' : 'ai-message'}`;
+    
+    if (imgUrl) {
+        const img = document.createElement('img');
+        img.src = imgUrl;
+        msgDiv.appendChild(img);
+    }
+    
+    const p = document.createElement('p');
+    p.innerHTML = text.replace(/\n/g, '<br>');
+    msgDiv.appendChild(p);
+    
+    chatHistory.appendChild(msgDiv);
+    chatHistory.scrollTop = chatHistory.scrollHeight;
+}
+
+function previewImage(event) {
+    const file = event.target.files[0];
+    if (file) {
+        selectedFile = file;
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            previewImg.src = e.target.result;
+            imagePreview.style.display = 'inline-block';
+        }
+        reader.readAsDataURL(file);
+    }
+}
+
+function removeImage() {
+    selectedFile = null;
+    imageUpload.value = '';
+    imagePreview.style.display = 'none';
+}
+
+chatForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const text = chatInput.value.trim();
+    if (!text && !selectedFile) return;
+
+    let imgDataUrl = null;
+    if (selectedFile) imgDataUrl = previewImg.src;
+
+    appendMessage(text || "📷 Đã gửi một ảnh", true, imgDataUrl);
+    
+    const formData = new FormData();
+    formData.append('text', text);
+    if (selectedFile) formData.append('image', selectedFile);
+
+    chatInput.value = '';
+    removeImage();
+    
+    appendMessage("⏳ Đang suy nghĩ...", false);
+    const typingMsg = chatHistory.lastElementChild;
+
+    try {
+        const pwd = localStorage.getItem('web_password') || '';
+        const res = await fetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Authorization': 'Bearer ' + pwd },
+            body: formData
         });
-
-        const balance = totalIncome - totalExpense;
-
-        document.getElementById('totalIncome').textContent = formatCurrency(totalIncome);
-        document.getElementById('totalExpense').textContent = formatCurrency(totalExpense);
-        document.getElementById('netBalance').textContent = formatCurrency(balance);
-        document.getElementById('txCount').textContent = expensesData.length;
-    };
-
-    const renderTransactions = () => {
-        const listEl = document.getElementById('transactionsList');
-        listEl.innerHTML = '';
-
-        if (expensesData.length === 0) {
-            listEl.innerHTML = '<div class="loading">Chưa có giao dịch nào.</div>';
+        
+        if (res.status === 401) {
+            typingMsg.remove();
+            appendMessage("❌ Phiên đăng nhập hết hạn, vui lòng tải lại trang.", false);
             return;
         }
 
-        // Đảo ngược mảng để giao dịch mới nhất lên đầu (hoặc lấy 10 cái mới nhất)
-        const recentTx = [...expensesData].reverse().slice(0, 10);
-
-        recentTx.forEach(exp => {
-            const isThu = exp.type.toLowerCase() === 'thu';
-            
-            const item = document.createElement('div');
-            item.className = 'tx-item';
-            
-            item.innerHTML = `
-                <div class="tx-left">
-                    <div class="tx-icon ${isThu ? 'thu' : 'chi'}">
-                        ${isThu ? '↓' : '↑'}
-                    </div>
-                    <div class="tx-details">
-                        <h4>${exp.description}</h4>
-                        <p>${exp.category} • ${exp.date}</p>
-                    </div>
-                </div>
-                <div class="tx-right">
-                    <span class="tx-amount ${isThu ? 'positive' : 'negative'}">
-                        ${isThu ? '+' : '-'}${formatCurrency(exp.amount)}
-                    </span>
-                </div>
-            `;
-            listEl.appendChild(item);
-        });
-    };
-
-    const renderChart = () => {
-        const ctx = document.getElementById('expenseChart').getContext('2d');
+        const data = await res.json();
+        typingMsg.remove();
         
-        // Nhóm dữ liệu Chi
-        const categories = {};
-        expensesData.forEach(exp => {
-            if (exp.type.toLowerCase() !== 'thu') {
-                const cat = exp.category || 'Khác';
-                categories[cat] = (categories[cat] || 0) + exp.amount;
+        if (data.success) {
+            appendMessage(data.reply, false);
+            if (data.expenses) {
+                expenses = [...expenses, ...data.expenses];
+                updateDashboard();
             }
-        });
-
-        const labels = Object.keys(categories);
-        const data = Object.values(categories);
-
-        // Màu sắc hiện đại
-        const backgroundColors = [
-            '#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#14b8a6'
-        ];
-
-        const isDark = root.getAttribute('data-theme') === 'dark';
-        const textColor = isDark ? '#f8fafc' : '#111827';
-
-        if (expenseChart) expenseChart.destroy();
-
-        expenseChart = new Chart(ctx, {
-            type: 'doughnut',
-            data: {
-                labels: labels,
-                datasets: [{
-                    data: data,
-                    backgroundColor: backgroundColors,
-                    borderWidth: 0,
-                    hoverOffset: 10
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                cutout: '70%',
-                plugins: {
-                    legend: {
-                        position: 'right',
-                        labels: {
-                            color: textColor,
-                            font: { family: 'Inter', size: 12 }
-                        }
-                    }
-                }
-            }
-        });
-    };
-
-    const updateChartTheme = () => {
-        if (!expenseChart) return;
-        const isDark = root.getAttribute('data-theme') === 'dark';
-        expenseChart.options.plugins.legend.labels.color = isDark ? '#f8fafc' : '#111827';
-        expenseChart.update();
-    };
-
-    // Khởi chạy
-    fetchData();
+        } else {
+            appendMessage(data.reply || "❌ Có lỗi xảy ra", false);
+        }
+    } catch (err) {
+        typingMsg.remove();
+        appendMessage("❌ Lỗi mạng: " + err.message, false);
+    }
 });
+
+// Theme Toggle
+const themeToggle = document.getElementById('themeToggle');
+const savedTheme = localStorage.getItem('theme') || 'light';
+if (savedTheme === 'dark') {
+    document.body.setAttribute('data-theme', 'dark');
+    themeToggle.innerText = '☀️';
+}
+
+themeToggle.addEventListener('click', () => {
+    const isDark = document.body.getAttribute('data-theme') === 'dark';
+    if (isDark) {
+        document.body.removeAttribute('data-theme');
+        localStorage.setItem('theme', 'light');
+        themeToggle.innerText = '🌙';
+    } else {
+        document.body.setAttribute('data-theme', 'dark');
+        localStorage.setItem('theme', 'dark');
+        themeToggle.innerText = '☀️';
+    }
+    if (chartInstance) updateDashboard();
+});
+
+// Init
+checkLogin();

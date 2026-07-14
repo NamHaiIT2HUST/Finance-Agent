@@ -3,57 +3,104 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Finance Dashboard</title>
+    <title>Finance App</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="app-container">
-        <!-- Header -->
-        <header class="glass-panel header">
-            <div class="user-info">
-                <h1 id="userName">Xin chào!</h1>
-                <p>Tổng quan tài chính của bạn</p>
-            </div>
-            <div id="themeToggle" class="theme-btn">🌙</div>
-        </header>
+    <!-- Login Modal -->
+    <div id="loginModal" class="modal-overlay">
+        <div class="glass-panel modal-content">
+            <h2>Đăng Nhập</h2>
+            <p>Vui lòng nhập Passcode để tiếp tục</p>
+            <input type="password" id="passcodeInput" placeholder="Nhập mã bảo vệ...">
+            <button id="loginBtn" class="primary-btn">Vào Dashboard</button>
+            <p id="loginError" class="error-text" style="display: none;">Sai mật khẩu!</p>
+        </div>
+    </div>
 
-        <!-- Summary Cards -->
-        <div class="summary-grid">
-            <div class="glass-card income-card">
-                <h3>Tổng Thu</h3>
-                <p id="totalIncome" class="amount positive">0 ₫</p>
-            </div>
-            <div class="glass-card expense-card">
-                <h3>Tổng Chi</h3>
-                <p id="totalExpense" class="amount negative">0 ₫</p>
-            </div>
-            <div class="glass-card balance-card full-width">
-                <h3>Số Dư Hiện Tại</h3>
-                <p id="netBalance" class="amount neutral">0 ₫</p>
-            </div>
+    <!-- Main App UI -->
+    <div id="appUI" class="app-container" style="display: none;">
+        
+        <!-- Mobile Tabs -->
+        <div class="mobile-tabs">
+            <button class="tab-btn active" onclick="switchTab('dashboard')">📊 Dashboard</button>
+            <button class="tab-btn" onclick="switchTab('chat')">💬 Chat AI</button>
         </div>
 
-        <!-- Chart Section -->
-        <section class="glass-panel chart-section">
-            <h2>Phân bổ chi tiêu</h2>
-            <div class="chart-container">
-                <canvas id="expenseChart"></canvas>
-            </div>
-        </section>
+        <div class="split-layout">
+            <!-- Left: Dashboard -->
+            <div id="dashboardTab" class="dashboard-panel active-tab">
+                <header class="glass-panel header">
+                    <div class="user-info">
+                        <h1 id="userName">Tổng quan</h1>
+                        <p>Tình hình tài chính hiện tại</p>
+                    </div>
+                    <div id="themeToggle" class="theme-btn">🌙</div>
+                </header>
 
-        <!-- Recent Transactions -->
-        <section class="glass-panel transactions-section">
-            <div class="section-header">
-                <h2>Giao dịch gần đây</h2>
-                <span class="badge" id="txCount">0</span>
+                <div class="summary-grid">
+                    <div class="glass-card income-card">
+                        <h3>Tổng Thu</h3>
+                        <p id="totalIncome" class="amount positive">0 ₫</p>
+                    </div>
+                    <div class="glass-card expense-card">
+                        <h3>Tổng Chi</h3>
+                        <p id="totalExpense" class="amount negative">0 ₫</p>
+                    </div>
+                    <div class="glass-card balance-card full-width">
+                        <h3>Số Dư Hiện Tại</h3>
+                        <p id="netBalance" class="amount neutral">0 ₫</p>
+                    </div>
+                </div>
+
+                <section class="glass-panel chart-section">
+                    <h2>Phân bổ chi tiêu</h2>
+                    <div class="chart-container">
+                        <canvas id="expenseChart"></canvas>
+                    </div>
+                </section>
+
+                <section class="glass-panel transactions-section">
+                    <div class="section-header">
+                        <h2>Giao dịch gần đây</h2>
+                        <span class="badge" id="txCount">0</span>
+                    </div>
+                    <div id="transactionsList" class="transactions-list">
+                        <div class="loading">Đang tải dữ liệu...</div>
+                    </div>
+                </section>
             </div>
-            <div id="transactionsList" class="transactions-list">
-                <div class="loading">Đang tải dữ liệu...</div>
+
+            <!-- Right: Chat Interface -->
+            <div id="chatTab" class="chat-panel">
+                <header class="glass-panel header">
+                    <h2>🤖 Trợ lý AI</h2>
+                    <button class="reload-btn" onclick="fetchData()">🔄 Làm mới DB</button>
+                </header>
+                
+                <div id="chatHistory" class="chat-history">
+                    <div class="message ai-message">
+                        <p>Xin chào! Tôi là trợ lý tài chính AI. Bạn có thể nhập khoản chi tiêu hoặc chọn tải ảnh hóa đơn lên để tôi ghi sổ nhé!</p>
+                    </div>
+                </div>
+
+                <div class="chat-input-area glass-panel">
+                    <div id="imagePreview" class="image-preview" style="display: none;">
+                        <img id="previewImg" src="" alt="Preview">
+                        <button onclick="removeImage()" class="remove-img-btn">✕</button>
+                    </div>
+                    <form id="chatForm" class="chat-form">
+                        <label for="imageUpload" class="upload-btn" title="Tải ảnh hóa đơn">📸</label>
+                        <input type="file" id="imageUpload" accept="image/*" style="display: none;" onchange="previewImage(event)">
+                        
+                        <input type="text" id="chatInput" placeholder="Nhắn tin (VD: Ăn sáng 30k)..." autocomplete="off">
+                        <button type="submit" class="send-btn">➤</button>
+                    </form>
+                </div>
             </div>
-        </section>
+        </div>
     </div>
 
     <script src="app.js"></script>
