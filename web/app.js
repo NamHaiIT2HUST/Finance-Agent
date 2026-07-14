@@ -39,11 +39,11 @@ async function handleLogin() {
             document.getElementById('userNameDisplay').innerText = data.user.full_name;
             
             if (data.user.role === 'admin') {
-                document.getElementById('adminTabBtn').style.display = 'block';
-                document.getElementById('adminDesktopBtn').style.display = 'block';
+                const navAdminBtn = document.getElementById('navAdminBtn');
+                if (navAdminBtn) navAdminBtn.style.display = 'block';
             } else {
-                document.getElementById('adminTabBtn').style.display = 'none';
-                document.getElementById('adminDesktopBtn').style.display = 'none';
+                const navAdminBtn = document.getElementById('navAdminBtn');
+                if (navAdminBtn) navAdminBtn.style.display = 'none';
             }
 
             authScreen.style.display = 'none';
@@ -114,7 +114,7 @@ function logout() {
     document.getElementById('transactionsList').innerHTML = '';
     document.getElementById('totalIncome').innerText = '0đ';
     document.getElementById('totalExpense').innerText = '0đ';
-    document.getElementById('balance').innerText = '0đ';
+    document.getElementById('netBalance').innerText = '0đ';
     if (document.getElementById('adminUsersList')) {
         document.getElementById('adminUsersList').innerHTML = '';
     }
