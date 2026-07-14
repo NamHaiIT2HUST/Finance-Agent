@@ -111,6 +111,10 @@ function logout() {
         chartInstance.destroy();
         chartInstance = null;
     }
+    if (statsChartInstance) {
+        statsChartInstance.destroy();
+        statsChartInstance = null;
+    }
     document.getElementById('transactionsList').innerHTML = '';
     document.getElementById('totalIncome').innerText = '0đ';
     document.getElementById('totalExpense').innerText = '0đ';
@@ -152,10 +156,8 @@ function checkLogin() {
         
         if (localStorage.getItem('role') === 'admin') {
             document.getElementById('adminTabBtn').style.display = 'block';
-            document.getElementById('adminDesktopBtn').style.display = 'block';
         } else {
             document.getElementById('adminTabBtn').style.display = 'none';
-            document.getElementById('adminDesktopBtn').style.display = 'none';
         }
 
         fetchData();
@@ -166,14 +168,18 @@ function checkLogin() {
 }
 
 // Tab Switching
-function switchTab(tabId) {
+function switchTab(tabId, event) {
     document.querySelectorAll('.dashboard-panel, .chat-panel, .admin-panel').forEach(el => el.classList.remove('active-tab'));
     document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
     
     document.getElementById(tabId + 'Tab').classList.add('active-tab');
-    event.target.classList.add('active');
+    if (event) event.target.classList.add('active');
 
     if (tabId === 'admin') fetchAdminData();
+    if (tabId === 'stats') {
+        initStatsFilters();
+        updateStats();
+    }
 }
 
 let isAdminView = false;
@@ -182,17 +188,127 @@ function toggleAdminView() {
     if (isAdminView) {
         document.getElementById('dashboardTab').style.display = 'none';
         document.getElementById('chatTab').style.display = 'none';
+        if (document.getElementById('statsTab')) document.getElementById('statsTab').style.display = 'none';
         document.getElementById('adminTab').style.display = 'flex';
         document.getElementById('adminTab').style.flex = '1';
         fetchAdminData();
     } else {
-        // Đảm bảo dashboard và chat hiện lại (bằng cách xóa inline style)
         document.getElementById('dashboardTab').style.display = '';
         document.getElementById('chatTab').style.display = '';
-        // ĐẢM BẢO admin tab bị ẩn đi, không được phép xóa inline style của nó
         document.getElementById('adminTab').style.display = 'none';
         document.getElementById('adminTab').style.flex = '';
     }
+}
+
+let isStatsView = false;
+function toggleStatsView() {
+    isStatsView = !isStatsView;
+    if (isStatsView) {
+        document.getElementById('dashboardTab').style.display = 'none';
+        document.getElementById('chatTab').style.display = 'none';
+        document.getElementById('adminTab').style.display = 'none';
+        document.getElementById('statsTab').style.display = 'flex';
+        document.getElementById('statsTab').style.flex = '1';
+        document.getElementById('statsBackBtn').style.display = 'block';
+        initStatsFilters();
+        updateStats();
+    } else {
+        document.getElementById('dashboardTab').style.display = '';
+        document.getElementById('chatTab').style.display = '';
+        document.getElementById('statsTab').style.display = 'none';
+        document.getElementById('statsTab').style.flex = '';
+        document.getElementById('statsBackBtn').style.display = 'none';
+    }
+}
+
+let statsChartInstance = null;
+
+function initStatsFilters() {
+    const yearSelect = document.getElementById('statsYear');
+    const years = new Set();
+    if (expenses && expenses.length > 0) {
+        expenses.forEach(exp => {
+            if (exp.date) years.add(new Date(exp.date).getFullYear());
+        });
+    }
+    
+    // Đảm bảo luôn có năm hiện tại
+    years.add(new Date().getFullYear());
+    
+    // Luôn render lại danh sách năm để tránh lưu dữ liệu user cũ
+    yearSelect.innerHTML = '';
+    Array.from(years).sort((a,b)=>b-a).forEach(y => {
+        yearSelect.innerHTML += `<option value="${y}">Năm ${y}</option>`;
+    });
+    
+    // Mặc định trình duyệt sẽ giữ nguyên tháng đã chọn hoặc lấy "all" (Cả năm)
+}
+
+function updateStats() {
+    const monthVal = document.getElementById('statsMonth').value;
+    const yearVal = document.getElementById('statsYear').value;
+    
+    if (!yearVal) return;
+
+    let filtered = expenses.filter(exp => {
+        if (!exp.date) return false;
+        const d = new Date(exp.date);
+        if (d.getFullYear().toString() !== yearVal) return false;
+        if (monthVal !== 'all' && d.getMonth().toString() !== monthVal) return false;
+        return true;
+    });
+
+    let sIncome = 0;
+    let sExpense = 0;
+    const sCategory = {};
+
+    filtered.forEach(exp => {
+        if (exp.type === 'Thu' || exp.type === 'thu') {
+            sIncome += exp.amount;
+        } else {
+            sExpense += exp.amount;
+            sCategory[exp.category] = (sCategory[exp.category] || 0) + exp.amount;
+        }
+    });
+
+    const formatVND = (num) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(num);
+    document.getElementById('statsIncome').innerText = formatVND(sIncome);
+    document.getElementById('statsExpense').innerText = formatVND(sExpense);
+    document.getElementById('statsBalance').innerText = formatVND(sIncome - sExpense);
+
+    // Vẽ biểu đồ
+    const ctx = document.getElementById('statsChart');
+    if (!ctx) return;
+    if (statsChartInstance) {
+        statsChartInstance.destroy();
+    }
+
+    if (Object.keys(sCategory).length === 0) {
+        statsChartInstance = new Chart(ctx, {
+            type: 'doughnut',
+            data: { labels: ['Chưa có dữ liệu'], datasets: [{ data: [1], backgroundColor: ['#ccc'] }] }
+        });
+        return;
+    }
+
+    statsChartInstance = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: Object.keys(sCategory),
+            datasets: [{
+                data: Object.values(sCategory),
+                backgroundColor: ['#ef4444', '#f59e0b', '#3b82f6', '#8b5cf6', '#10b981', '#ec4899', '#6366f1'],
+                borderWidth: 0
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'right', labels: { color: 'var(--text-primary)' } }
+            }
+        }
+    });
 }
 
 // Fetch Data
@@ -269,8 +385,20 @@ const updateDashboard = () => {
     let totalIncome = 0;
     let totalExpense = 0;
     const categoryTotals = {};
+    
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+    document.getElementById('currentMonthLabel').innerText = `(Tháng ${currentMonth + 1}/${currentYear})`;
 
-    expenses.forEach(exp => {
+    // Lọc dữ liệu chỉ lấy tháng hiện tại
+    const currentMonthExpenses = expenses.filter(exp => {
+        if (!exp.date) return false;
+        const d = new Date(exp.date);
+        return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+    });
+
+    currentMonthExpenses.forEach(exp => {
         if (exp.type === 'Thu' || exp.type === 'thu') {
             totalIncome += exp.amount;
         } else {
@@ -284,16 +412,17 @@ const updateDashboard = () => {
     document.getElementById('totalIncome').innerText = formatVND(totalIncome);
     document.getElementById('totalExpense').innerText = formatVND(totalExpense);
     document.getElementById('netBalance').innerText = formatVND(totalIncome - totalExpense);
-    document.getElementById('txCount').innerText = expenses.length;
-
+    
     const listEl = document.getElementById('transactionsList');
     listEl.innerHTML = '';
-    const recent = [...expenses].reverse().slice(0, 15);
     
-    if (recent.length === 0) {
-        listEl.innerHTML = '<p style="text-align:center; color:var(--text-secondary)">Chưa có giao dịch nào.</p>';
+    document.getElementById('txCount').innerText = currentMonthExpenses.length;
+    
+    if (currentMonthExpenses.length === 0) {
+        listEl.innerHTML = '<div class="loading">Tháng này chưa có giao dịch nào.</div>';
     }
 
+    const recent = [...currentMonthExpenses].reverse();
     recent.forEach(exp => {
         const item = document.createElement('div');
         item.className = 'transaction-item glass-card';
