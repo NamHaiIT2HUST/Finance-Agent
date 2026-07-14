@@ -429,5 +429,18 @@ themeToggle.addEventListener('click', () => {
     if (chartInstance) updateDashboard();
 });
 
-// Init
+// Khởi tạo ban đầu
 checkLogin();
+
+// Hàm dọn dẹp tin nhắn
+function clearChat() {
+    const chatHistory = document.getElementById('chatHistory');
+    chatHistory.innerHTML = `
+        <div class="message ai-message">
+            <p>Xin chào! Tôi là trợ lý tài chính AI. Lịch sử trò chuyện đã được dọn dẹp sạch sẽ 🧹. Bạn có khoản thu chi nào mới không?</p>
+        </div>
+    `;
+    // Thêm hiệu ứng nháy nhẹ để người dùng biết đã dọn
+    chatHistory.style.opacity = '0.5';
+    setTimeout(() => { chatHistory.style.opacity = '1'; }, 200);
+}
