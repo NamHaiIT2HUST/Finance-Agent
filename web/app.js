@@ -105,8 +105,42 @@ function logout() {
     document.getElementById('adminTab').style.display = 'none';
     document.getElementById('adminTab').style.flex = '';
 
+    // Dọn sạch dữ liệu cũ khỏi màn hình (tránh lóe lên ở lần đăng nhập sau)
+    expenses = [];
+    if (chartInstance) {
+        chartInstance.destroy();
+        chartInstance = null;
+    }
+    document.getElementById('transactionsList').innerHTML = '';
+    document.getElementById('totalIncome').innerText = '0đ';
+    document.getElementById('totalExpense').innerText = '0đ';
+    document.getElementById('balance').innerText = '0đ';
+    if (document.getElementById('adminUsersList')) {
+        document.getElementById('adminUsersList').innerHTML = '';
+    }
+    clearChat(); // Dọn sạch tin nhắn
+
+    // Reset về form đăng nhập
+    document.getElementById('loginForm').style.display = 'block';
+    document.getElementById('registerForm').style.display = 'none';
+
+    // Đưa ứng dụng về màn hình đăng nhập
     authScreen.style.display = 'flex';
     appUI.style.display = 'none';
+
+    // Đưa giao diện mobile về tab Dashboard mặc định
+    const tabs = document.querySelectorAll('.tab-btn');
+    if (tabs.length > 0) {
+        tabs.forEach(btn => btn.classList.remove('active'));
+        tabs[0].classList.add('active'); // Nút Dashboard
+        document.getElementById('dashboardTab').style.display = '';
+        document.getElementById('chatTab').style.display = '';
+        if (window.innerWidth <= 768) {
+            document.getElementById('dashboardTab').classList.add('active-tab');
+            document.getElementById('chatTab').classList.remove('active-tab');
+            document.getElementById('adminTab').classList.remove('active-tab');
+        }
+    }
 }
 
 function checkLogin() {
