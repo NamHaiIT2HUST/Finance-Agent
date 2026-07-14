@@ -185,19 +185,22 @@ func main() {
 
 		promptParts = append(promptParts, genai.Text(userText))
 
-		model := aiClient.GenerativeModel("gemini-3.5-flash")
-		model.SystemInstruction = &genai.Content{
-			Parts: []genai.Part{
-				genai.Text(`Bạn là một Agent quản lý tài chính cá nhân.
-Người dùng sẽ nói về các khoản thu nhập hoặc chi tiêu. Nếu người dùng gửi hóa đơn siêu thị dài, hãy bóc tách TỪNG MÓN HÀNG thành các khoản chiêng biệt.
+		model := aiClient.GenerativeModel("gemini-1.5-flash")
+		currentDate := time.Now().Format("2006-01-02")
+		promptText := fmt.Sprintf(`Hôm nay là ngày %s. Bạn là một Agent quản lý tài chính cá nhân.
+Người dùng sẽ nói về các khoản thu nhập hoặc chi tiêu. Nếu họ không nói rõ ngày, MẶC ĐỊNH lấy ngày hôm nay (%s). Nếu người dùng gửi hóa đơn siêu thị dài, hãy bóc tách TỪNG MÓN HÀNG thành các khoản riêng biệt.
 Nhiệm vụ: Phân tích và CHỈ trả về một MẢNG (ARRAY) JSON, mỗi phần tử có các key: 
 - "date" (YYYY-MM-DD)
 - "type" ("Thu" hoặc "Chi")
 - "amount" (số nguyên dương)
 - "category" (nhóm chi tiêu/thu nhập)
 - "description".
-Ví dụ: [{"date": "2023-10-25", "type": "Chi", "amount": 50000, "category": "Ăn uống", "description": "Phở"}, {"date": "2023-10-25", "type": "Chi", "amount": 10000, "category": "Ăn uống", "description": "Trà đá"}]
-TUYỆT ĐỐI trả về mảng JSON hợp lệ. Không giải thích gì thêm.`),
+Ví dụ: [{"date": "%s", "type": "Chi", "amount": 50000, "category": "Ăn uống", "description": "Phở"}]
+TUYỆT ĐỐI trả về mảng JSON hợp lệ. Không giải thích gì thêm.`, currentDate, currentDate, currentDate)
+
+		model.SystemInstruction = &genai.Content{
+			Parts: []genai.Part{
+				genai.Text(promptText),
 			},
 		}
 		model.ResponseMIMEType = "application/json"
