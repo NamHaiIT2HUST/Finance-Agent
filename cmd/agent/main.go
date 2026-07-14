@@ -452,11 +452,11 @@ Không giải thích gì thêm.`),
 				"text":       "🌟 **Web Dashboard**\n\nBấm vào nút bên dưới để mở giao diện quản lý tài chính nâng cao trực tiếp trên Telegram!",
 				"parse_mode": "Markdown",
 				"reply_markup": map[string]interface{}{
-					"inline_keyboard": [][]*map[string]interface{}{
-						{
-							{
+					"inline_keyboard": []interface{}{
+						[]interface{}{
+							map[string]interface{}{
 								"text": "🚀 Mở Dashboard",
-								"web_app": map[string]string{
+								"web_app": map[string]interface{}{
 									"url": appURL,
 								},
 							},
@@ -466,7 +466,14 @@ Không giải thích gì thêm.`),
 			}
 			
 			b, _ := json.Marshal(payload)
-			http.Post(urlStr, "application/json", bytes.NewBuffer(b))
+			resp, errPost := http.Post(urlStr, "application/json", bytes.NewBuffer(b))
+			if errPost != nil {
+				log.Printf("Lỗi gửi WebApp: %v", errPost)
+			} else {
+				defer resp.Body.Close()
+				body, _ := io.ReadAll(resp.Body)
+				log.Printf("Phản hồi từ Telegram API: %s", string(body))
+			}
 			continue
 		}
 
