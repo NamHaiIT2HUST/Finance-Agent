@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 
 	"google.golang.org/api/option"
 	"google.golang.org/api/sheets/v4"
@@ -19,13 +20,57 @@ type Expense struct {
 	Description string `json:"description"`
 }
 
-func ParseExpenseJSON(jsonData string) (*Expense, error) {
-	var exp Expense
-	err := json.Unmarshal([]byte(jsonData), &exp)
+// ParseExpensesJSON đọc chuỗi JSON từ AI và trả về danh sách các Expense (hỗ trợ đọc hóa đơn nhiều món)
+func ParseExpensesJSON(jsonStr string) ([]Expense, error) {
+	jsonStr = strings.TrimSpace(jsonStr)
+
+	// Xử lý nếu AI lỡ trả về 1 object thay vì mảng (đưa vào mảng 1 phần tử)
+	if strings.HasPrefix(jsonStr, "{") {
+		var exp Expense
+		err := json.Unmarshal([]byte(jsonStr), &exp)
+		if err != nil {
+			return nil, err
+		}
+		return []Expense{exp}, nil
+	}
+
+	var expenses []Expense
+	err := json.Unmarshal([]byte(jsonStr), &expenses)
 	if err != nil {
 		return nil, err
 	}
-	return &exp, nil
+	return expenses, nil
+}
+
+func AppendExpensesToSheet(spreadsheetId string, exps []Expense) error {
+	ctx := context.Background()
+
+	b, err := os.ReadFile("credentials.json")
+	if err != nil {
+		return fmt.Errorf("không thể đọc file credentials.json: %v", err)
+	}
+
+	srv, err := sheets.NewService(ctx, option.WithCredentialsJSON(b))
+	if err != nil {
+		return fmt.Errorf("lỗi khởi tạo Sheets client: %v", err)
+	}
+
+	var values [][]interface{}
+	for _, exp := range exps {
+		values = append(values, []interface{}{exp.Date, exp.Type, exp.Amount, exp.Category, exp.Description})
+	}
+
+	writeRange := "Sheet1!A:E"
+	row := &sheets.ValueRange{
+		Values: values,
+	}
+
+	_, err = srv.Spreadsheets.Values.Append(spreadsheetId, writeRange, row).ValueInputOption("USER_ENTERED").Do()
+	if err != nil {
+		return fmt.Errorf("không thể ghi dữ liệu: %v", err)
+	}
+
+	return nil
 }
 
 func AppendExpenseToSheet(spreadsheetId string, exp *Expense) error {

@@ -38,13 +38,14 @@ func main() {
 	model.SystemInstruction = &genai.Content{
 		Parts: []genai.Part{
 			genai.Text(`Bạn là một Agent quản lý tài chính cá nhân.
-Người dùng sẽ nói về các khoản thu nhập hoặc chi tiêu.
-Nhiệm vụ: Phân tích và CHỈ trả về JSON với các key: 
+Người dùng sẽ nói về các khoản thu nhập hoặc chi tiêu. Nếu người dùng gửi hóa đơn siêu thị dài, hãy bóc tách TỪNG MÓN HÀNG thành các khoản chiêng biệt.
+Nhiệm vụ: Phân tích và CHỈ trả về một MẢNG (ARRAY) JSON, mỗi phần tử có các key: 
 - "date" (YYYY-MM-DD)
 - "type" ("Thu" hoặc "Chi")
 - "amount" (số nguyên dương)
 - "category" (nhóm chi tiêu/thu nhập)
 - "description".
+Ví dụ: [{"date": "2023-10-25", "type": "Chi", "amount": 50000, "category": "Ăn uống", "description": "Phở"}, {"date": "2023-10-25", "type": "Chi", "amount": 10000, "category": "Ăn uống", "description": "Trà đá"}]
 Không giải thích gì thêm.`),
 		},
 	}
@@ -155,10 +156,25 @@ Không giải thích gì thêm.`),
 			continue
 		}
 
-		if update.Message.Text == "/report" {
-			bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID, "📊 Đang tổng hợp dữ liệu chi tiêu..."))
+		chatIDStr := strconv.FormatInt(update.Message.Chat.ID, 10)
 
-			expenses, err := tools.FetchExpensesFromSheet(os.Getenv("SPREADSHEET_ID"))
+		// Kiểm tra Bảo mật Đa người dùng
+		authUsers := os.Getenv("AUTHORIZED_USERS")
+		if authUsers != "" && !strings.Contains(authUsers, chatIDStr) {
+			bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID, "⛔ CẢNH BÁO: Bạn không có quyền truy cập vào Bot này!"))
+			continue
+		}
+
+		// Xác định SPREADSHEET_ID cho người dùng hiện tại
+		userSpreadsheet := os.Getenv("SPREADSHEET_ID_" + chatIDStr)
+		if userSpreadsheet == "" {
+			userSpreadsheet = os.Getenv("SPREADSHEET_ID")
+		}
+
+		if update.Message.Text == "/report" {
+			bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID, "⏳ Đang tổng hợp dữ liệu..."))
+
+			expenses, err := tools.FetchExpensesFromSheet(userSpreadsheet)
 			if err != nil {
 				bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID, "❌ Lỗi khi đọc dữ liệu: "+err.Error()))
 				continue
@@ -218,7 +234,7 @@ Không giải thích gì thêm.`),
 		if update.Message.Text == "/chart" {
 			bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID, "📊 Đang vẽ biểu đồ chi tiêu..."))
 
-			expenses, err := tools.FetchExpensesFromSheet(os.Getenv("SPREADSHEET_ID"))
+			expenses, err := tools.FetchExpensesFromSheet(userSpreadsheet)
 			if err != nil {
 				bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID, "❌ Lỗi khi đọc dữ liệu: "+err.Error()))
 				continue
@@ -264,7 +280,7 @@ Không giải thích gì thêm.`),
 		if update.Message.Text == "/undo" {
 			bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID, "⏳ Đang tiến hành xóa giao dịch cuối cùng..."))
 
-			err := tools.UndoLastExpense(os.Getenv("SPREADSHEET_ID"))
+			err := tools.UndoLastExpense(userSpreadsheet)
 			if err != nil {
 				bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID, "❌ Lỗi khi hoàn tác: "+err.Error()))
 			} else {
@@ -276,7 +292,7 @@ Không giải thích gì thêm.`),
 		if update.Message.Text == "/edit" {
 			bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID, "⏳ Đang tải danh sách 5 giao dịch gần nhất..."))
 			
-			recentExp, err := tools.FetchRecentExpenses(os.Getenv("SPREADSHEET_ID"), 5)
+			recentExp, err := tools.FetchRecentExpenses(userSpreadsheet, 5)
 			if err != nil || len(recentExp) == 0 {
 				bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID, "❌ Không thể lấy danh sách giao dịch."))
 				continue
@@ -301,7 +317,7 @@ Không giải thích gì thêm.`),
 		if update.Message.Text == "/export" {
 			bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID, "⏳ Đang tạo file báo cáo (CSV)..."))
 
-			expenses, err := tools.FetchExpensesFromSheet(os.Getenv("SPREADSHEET_ID"))
+			expenses, err := tools.FetchExpensesFromSheet(userSpreadsheet)
 			if err != nil {
 				bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID, "❌ Lỗi khi đọc dữ liệu: "+err.Error()))
 				continue
@@ -331,7 +347,7 @@ Không giải thích gì thêm.`),
 			bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID, "🤔 Đang tra cứu dữ liệu và suy nghĩ..."))
 			bot.Send(tgbotapi.NewChatAction(update.Message.Chat.ID, tgbotapi.ChatTyping))
 
-			expenses, err := tools.FetchExpensesFromSheet(os.Getenv("SPREADSHEET_ID"))
+			expenses, err := tools.FetchExpensesFromSheet(userSpreadsheet)
 			if err != nil {
 				bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID, "❌ Lỗi khi đọc dữ liệu: "+err.Error()))
 				continue
@@ -429,36 +445,47 @@ Không giải thích gì thêm.`),
 			replyText = strings.TrimPrefix(replyText, "```json\n")
 			replyText = strings.TrimSuffix(replyText, "\n```")
 
-			exp, errParse := tools.ParseExpenseJSON(replyText)
+			exps, errParse := tools.ParseExpensesJSON(replyText)
 			if errParse == nil {
 				chatID := update.Message.Chat.ID
 				isSuccess := false
 				
+				// Nếu đang sửa giao dịch (chỉ hỗ trợ 1 dòng)
 				if rowIndex, ok := editState[chatID]; ok && rowIndex > 0 {
-					errSheet := tools.UpdateExpenseRow(os.Getenv("SPREADSHEET_ID"), rowIndex, exp)
-					if errSheet != nil {
-						replyText = "Lỗi cập nhật Database: " + errSheet.Error()
-					} else {
-						replyText = fmt.Sprintf("✏️ Đã SỬA thành công dòng %d: [%s] %s - %d VND", rowIndex, exp.Type, exp.Description, exp.Amount)
-						delete(editState, chatID) // Xóa state
-						isSuccess = true
+					if len(exps) > 0 {
+						exp := exps[0] // Chỉ lấy phần tử đầu tiên nếu edit
+						errSheet := tools.UpdateExpenseRow(userSpreadsheet, rowIndex, &exp)
+						if errSheet != nil {
+							replyText = "Lỗi cập nhật Database: " + errSheet.Error()
+						} else {
+							replyText = fmt.Sprintf("✏️ Đã SỬA thành công dòng %d: [%s] %s - %d VND", rowIndex, exp.Type, exp.Description, exp.Amount)
+							delete(editState, chatID) // Xóa state
+							isSuccess = true
+						}
 					}
 				} else {
-					errSheet := tools.AppendExpenseToSheet(os.Getenv("SPREADSHEET_ID"), exp)
+					// Ghi mới (hỗ trợ nhiều dòng)
+					errSheet := tools.AppendExpensesToSheet(userSpreadsheet, exps)
 					if errSheet != nil {
 						replyText = "Lỗi ghi Database: " + errSheet.Error()
 					} else {
-						replyText = fmt.Sprintf("✅ Đã ghi vào sổ: [%s] %s - %d VND (%s)", exp.Type, exp.Description, exp.Amount, exp.Category)
+						replyText = "✅ Đã ghi vào sổ:\n"
+						totalAdded := 0
+						for _, exp := range exps {
+							replyText += fmt.Sprintf("- [%s] %s - %d VND (%s)\n", exp.Type, exp.Description, exp.Amount, exp.Category)
+							totalAdded += exp.Amount
+						}
+						replyText += fmt.Sprintf("\n💰 Tổng cộng: %d VND", totalAdded)
 						isSuccess = true
 					}
 				}
 
 				// Tính năng Cảnh báo Ngân sách (Budget Alerts)
-				if isSuccess && (exp.Type == "Chi" || exp.Type == "chi" || exp.Type == "") {
+				if isSuccess {
 					budgetStr := os.Getenv("MONTHLY_BUDGET")
 					if budgetStr != "" {
 						if budget, errB := strconv.Atoi(budgetStr); errB == nil && budget > 0 {
-							allExps, errF := tools.FetchExpensesFromSheet(os.Getenv("SPREADSHEET_ID"))
+							allExps, errF := tools.FetchExpensesFromSheet(userSpreadsheet)
 							if errF == nil {
 								currentMonth := time.Now().Format("2006-01") // Lấy chuỗi YYYY-MM
 								totalMonthExpense := 0
