@@ -9,5 +9,5 @@ WORKDIR /app
 RUN apk --no-cache add ca-certificates tzdata
 ENV TZ=Asia/Ho_Chi_Minh
 COPY --from=builder /app/finance-bot .
-COPY credentials.json .
+COPY web/ ./web/
 CMD ["./finance-bot"]
