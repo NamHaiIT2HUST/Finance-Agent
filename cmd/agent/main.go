@@ -194,6 +194,20 @@ TUYỆT ĐỐI trả về mảng JSON hợp lệ. Không giải thích gì thêm
 			},
 		}
 		model.ResponseMIMEType = "application/json"
+		model.ResponseSchema = &genai.Schema{
+			Type: genai.TypeArray,
+			Items: &genai.Schema{
+				Type: genai.TypeObject,
+				Properties: map[string]*genai.Schema{
+					"date":        {Type: genai.TypeString},
+					"type":        {Type: genai.TypeString},
+					"amount":      {Type: genai.TypeInteger},
+					"category":    {Type: genai.TypeString},
+					"description": {Type: genai.TypeString},
+				},
+				Required: []string{"date", "type", "amount", "category", "description"},
+			},
+		}
 
 		resp, errGen := model.GenerateContent(ctx, promptParts...)
 		if errGen != nil {
@@ -210,7 +224,10 @@ TUYỆT ĐỐI trả về mảng JSON hợp lệ. Không giải thích gì thêm
 			replyText = fmt.Sprintf("%v", part)
 		}
 
+		// Dọn dẹp sơ nếu AI vẫn cố chấp trả về markdown
+		replyText = strings.TrimSpace(replyText)
 		replyText = strings.TrimPrefix(replyText, "```json\n")
+		replyText = strings.TrimPrefix(replyText, "```json")
 		replyText = strings.TrimSuffix(replyText, "\n```")
 		replyText = strings.TrimSuffix(replyText, "```")
 
