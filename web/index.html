@@ -40,11 +40,25 @@
     <!-- Main App UI -->
     <div id="appUI" class="app-container" style="display: none;">
         
+        <!-- Desktop Navigation -->
+        <nav class="desktop-nav">
+            <div class="nav-brand">Finance AI</div>
+            <div class="nav-links">
+                <button class="nav-btn active" onclick="switchTab('dashboard', event)" data-tab="dashboard">📊 Tổng quan</button>
+                <button class="nav-btn" onclick="switchTab('stats', event)" data-tab="stats">📈 Thống kê</button>
+                <button class="nav-btn" id="navAdminBtn" onclick="switchTab('admin', event)" data-tab="admin" style="display: none;">👑 Quản lý</button>
+            </div>
+            <div class="nav-actions">
+                <button class="icon-btn" id="themeToggle" title="Chế độ Tối/Sáng">🌙</button>
+                <button class="icon-btn logout-btn" onclick="logout()" title="Đăng xuất">🚪 Thoát</button>
+            </div>
+        </nav>
+        
         <!-- Mobile Tabs -->
         <div class="mobile-tabs">
-            <button class="tab-btn active" onclick="switchTab('dashboard', event)">📊 Tổng quan</button>
-            <button class="tab-btn" onclick="switchTab('stats', event)">📈 Thống kê</button>
-            <button class="tab-btn" onclick="switchTab('chat', event)">💬 Trợ lý AI</button>
+            <button class="tab-btn active" onclick="switchTab('dashboard', event)" data-tab="dashboard">📊 Tổng quan</button>
+            <button class="tab-btn" onclick="switchTab('stats', event)" data-tab="stats">📈 Thống kê</button>
+            <button class="tab-btn" onclick="switchTab('chat', event)" data-tab="chat">💬 Trợ lý AI</button>
             <button class="tab-btn logout-tab" onclick="logout()">🚪 Thoát</button>
         </div>
 
@@ -55,12 +69,6 @@
                     <div>
                         <h1>📊 Tổng quan <span id="currentMonthLabel" style="font-size: 0.9rem; font-weight: 500; color: var(--text-secondary); margin-left: 8px;"></span></h1>
                         <p id="userNameDisplay" style="color: var(--text-secondary);">User</p>
-                    </div>
-                    <div class="header-actions">
-                        <button class="icon-btn" onclick="toggleStatsView()" title="Xem Thống Kê">📈</button>
-                        <button class="icon-btn" id="themeToggle" title="Chế độ Tối/Sáng">🌙</button>
-                        <button class="icon-btn" id="adminTabBtn" style="display: none;" onclick="toggleAdminView()" title="Quản trị">👑</button>
-                        <button class="icon-btn logout-btn" id="logoutDesktopBtn" onclick="logout()" title="Đăng xuất">🚪</button>
                     </div>
                 </header>
 
@@ -128,10 +136,7 @@
             <!-- Admin Interface -->
             <div id="adminTab" class="admin-panel" style="display: none;">
                 <header class="glass-panel header">
-                    <div style="display: flex; gap: 10px; align-items: center;">
-                        <button class="icon-btn" onclick="toggleAdminView()" style="border: none; cursor: pointer;">🔙 Trở về</button>
-                        <h2>👑 Quản trị Người dùng</h2>
-                    </div>
+                    <h2>👑 Quản trị Người dùng</h2>
                     <button class="reload-btn" onclick="fetchAdminData()">🔄 Cập nhật</button>
                 </header>
                 
@@ -146,10 +151,7 @@
             <!-- Statistics Interface -->
             <div id="statsTab" class="admin-panel" style="display: none;">
                 <header class="glass-panel header">
-                    <div style="display: flex; gap: 10px; align-items: center;">
-                        <button class="icon-btn" id="statsBackBtn" onclick="toggleStatsView()" style="border: none; cursor: pointer; display: none;">🔙 Trở về</button>
-                        <h2>📈 Thống kê Chi tiêu</h2>
-                    </div>
+                    <h2>📈 Thống kê Chi tiêu</h2>
                 </header>
 
                 <section class="glass-panel">

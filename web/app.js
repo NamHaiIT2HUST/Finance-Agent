@@ -100,10 +100,6 @@ function logout() {
     localStorage.removeItem('role');
     
     isAdminView = false;
-    document.getElementById('dashboardTab').style.display = '';
-    document.getElementById('chatTab').style.display = '';
-    document.getElementById('adminTab').style.display = 'none';
-    document.getElementById('adminTab').style.flex = '';
 
     // Dọn sạch dữ liệu cũ khỏi màn hình (tránh lóe lên ở lần đăng nhập sau)
     expenses = [];
@@ -132,19 +128,8 @@ function logout() {
     authScreen.style.display = 'flex';
     appUI.style.display = 'none';
 
-    // Đưa giao diện mobile về tab Dashboard mặc định
-    const tabs = document.querySelectorAll('.tab-btn');
-    if (tabs.length > 0) {
-        tabs.forEach(btn => btn.classList.remove('active'));
-        tabs[0].classList.add('active'); // Nút Dashboard
-        document.getElementById('dashboardTab').style.display = '';
-        document.getElementById('chatTab').style.display = '';
-        if (window.innerWidth <= 768) {
-            document.getElementById('dashboardTab').classList.add('active-tab');
-            document.getElementById('chatTab').classList.remove('active-tab');
-            document.getElementById('adminTab').classList.remove('active-tab');
-        }
-    }
+    // Đưa giao diện về tab Dashboard mặc định
+    switchTab('dashboard');
 }
 
 function checkLogin() {
@@ -155,9 +140,11 @@ function checkLogin() {
         document.getElementById('userNameDisplay').innerText = localStorage.getItem('full_name') || 'User';
         
         if (localStorage.getItem('role') === 'admin') {
-            document.getElementById('adminTabBtn').style.display = 'block';
+            const navAdminBtn = document.getElementById('navAdminBtn');
+            if (navAdminBtn) navAdminBtn.style.display = 'block';
         } else {
-            document.getElementById('adminTabBtn').style.display = 'none';
+            const navAdminBtn = document.getElementById('navAdminBtn');
+            if (navAdminBtn) navAdminBtn.style.display = 'none';
         }
 
         fetchData();
@@ -169,55 +156,41 @@ function checkLogin() {
 
 // Tab Switching
 function switchTab(tabId, event) {
-    document.querySelectorAll('.dashboard-panel, .chat-panel, .admin-panel').forEach(el => el.classList.remove('active-tab'));
-    document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+    // Cập nhật class active cho cả mobile tabs và desktop nav
+    document.querySelectorAll('.tab-btn, .nav-btn').forEach(el => el.classList.remove('active'));
     
-    document.getElementById(tabId + 'Tab').classList.add('active-tab');
-    if (event) event.target.classList.add('active');
+    // Tìm và active đúng nút theo data-tab
+    document.querySelectorAll(`[data-tab="${tabId}"]`).forEach(el => el.classList.add('active'));
+
+    const isDesktop = window.innerWidth > 768;
+
+    if (isDesktop) {
+        // Desktop: Chat luôn hiển thị bên phải, chỉ thay đổi panel bên trái
+        document.getElementById('dashboardTab').style.display = 'none';
+        document.getElementById('statsTab').style.display = 'none';
+        document.getElementById('adminTab').style.display = 'none';
+        
+        if (tabId === 'chat') {
+            document.getElementById('dashboardTab').style.display = 'flex'; // Mặc định nếu click chat ở đâu đó
+        } else {
+            document.getElementById(tabId + 'Tab').style.display = 'flex';
+        }
+        document.getElementById('chatTab').style.display = 'flex';
+    } else {
+        // Mobile: Ẩn tất cả và chỉ hiện 1 panel
+        document.querySelectorAll('.dashboard-panel, .chat-panel, .admin-panel').forEach(el => {
+            el.classList.remove('active-tab');
+            el.style.display = 'none';
+        });
+        const targetTab = document.getElementById(tabId + 'Tab');
+        targetTab.classList.add('active-tab');
+        targetTab.style.display = 'flex';
+    }
 
     if (tabId === 'admin') fetchAdminData();
     if (tabId === 'stats') {
         initStatsFilters();
         updateStats();
-    }
-}
-
-let isAdminView = false;
-function toggleAdminView() {
-    isAdminView = !isAdminView;
-    if (isAdminView) {
-        document.getElementById('dashboardTab').style.display = 'none';
-        document.getElementById('chatTab').style.display = 'none';
-        if (document.getElementById('statsTab')) document.getElementById('statsTab').style.display = 'none';
-        document.getElementById('adminTab').style.display = 'flex';
-        document.getElementById('adminTab').style.flex = '1';
-        fetchAdminData();
-    } else {
-        document.getElementById('dashboardTab').style.display = '';
-        document.getElementById('chatTab').style.display = '';
-        document.getElementById('adminTab').style.display = 'none';
-        document.getElementById('adminTab').style.flex = '';
-    }
-}
-
-let isStatsView = false;
-function toggleStatsView() {
-    isStatsView = !isStatsView;
-    if (isStatsView) {
-        document.getElementById('dashboardTab').style.display = 'none';
-        document.getElementById('chatTab').style.display = 'none';
-        document.getElementById('adminTab').style.display = 'none';
-        document.getElementById('statsTab').style.display = 'flex';
-        document.getElementById('statsTab').style.flex = '1';
-        document.getElementById('statsBackBtn').style.display = 'block';
-        initStatsFilters();
-        updateStats();
-    } else {
-        document.getElementById('dashboardTab').style.display = '';
-        document.getElementById('chatTab').style.display = '';
-        document.getElementById('statsTab').style.display = 'none';
-        document.getElementById('statsTab').style.flex = '';
-        document.getElementById('statsBackBtn').style.display = 'none';
     }
 }
 

@@ -99,6 +99,15 @@ body {
 .tab-btn.active { background: var(--color-balance); color: #fff; }
 .logout-tab { color: var(--color-expense); }
 
+/* Desktop Navigation */
+.desktop-nav { display: flex; justify-content: space-between; align-items: center; padding: 15px 20px; background: var(--glass-bg); border-bottom: 1px solid var(--glass-border); }
+.nav-brand { font-size: 1.2rem; font-weight: 700; background: linear-gradient(135deg, var(--color-balance), #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.nav-links { display: flex; gap: 10px; }
+.nav-actions { display: flex; gap: 10px; }
+.nav-btn { padding: 8px 16px; border: none; border-radius: 8px; background: transparent; color: var(--text-secondary); font-weight: 600; cursor: pointer; transition: 0.2s; }
+.nav-btn:hover { background: rgba(255, 255, 255, 0.1); }
+.nav-btn.active { background: var(--color-balance); color: #fff; }
+
 .split-layout { display: flex; flex: 1; overflow: hidden; gap: 20px; padding: 20px; }
 .dashboard-panel, .admin-panel { flex: 1; display: flex; flex-direction: column; gap: 20px; overflow-y: auto; padding-right: 10px; }
 .chat-panel { flex: 1; display: flex; flex-direction: column; gap: 10px; overflow: hidden; padding-right: 10px; }
@@ -165,6 +174,7 @@ body {
     .dashboard-panel, .admin-panel { padding: 20px; display: none; height: 100%; overflow-y: auto; }
     .chat-panel { padding: 10px; display: none; height: 100%; overflow: hidden; }
     .active-tab { display: flex !important; }
+    .desktop-nav { display: none; }
 }
 
 .del-btn {
