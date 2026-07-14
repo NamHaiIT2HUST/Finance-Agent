@@ -143,13 +143,13 @@ function toggleAdminView() {
         document.getElementById('chatTab').style.display = 'none';
         document.getElementById('adminTab').style.display = 'flex';
         document.getElementById('adminTab').style.flex = '1';
-        document.getElementById('adminDesktopBtn').innerHTML = '🔙 Về Dashboard';
         fetchAdminData();
     } else {
-        document.getElementById('dashboardTab').style.display = 'flex';
-        document.getElementById('chatTab').style.display = 'flex';
-        document.getElementById('adminTab').style.display = 'none';
-        document.getElementById('adminDesktopBtn').innerHTML = '👑 Quản lý';
+        // Xóa inline style để CSS Media Queries tự động quyết định Layout
+        document.getElementById('dashboardTab').style.display = '';
+        document.getElementById('chatTab').style.display = '';
+        document.getElementById('adminTab').style.display = '';
+        document.getElementById('adminTab').style.flex = '';
     }
 }
 

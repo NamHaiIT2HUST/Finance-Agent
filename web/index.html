@@ -127,7 +127,10 @@
             <!-- Admin Interface -->
             <div id="adminTab" class="admin-panel" style="display: none;">
                 <header class="glass-panel header">
-                    <h2>👑 Quản trị Người dùng</h2>
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <button class="icon-btn" onclick="toggleAdminView()" style="border: none; cursor: pointer;">🔙 Trở về</button>
+                        <h2>👑 Quản trị Người dùng</h2>
+                    </div>
                     <button class="reload-btn" onclick="fetchAdminData()">🔄 Cập nhật</button>
                 </header>
                 
