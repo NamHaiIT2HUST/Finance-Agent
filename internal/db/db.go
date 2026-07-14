@@ -1,26 +1,30 @@
 package db
 
 import (
-	"database/sql"
 	"log"
+	"os"
+	"errors"
 
-	_ "modernc.org/sqlite"
 	"golang.org/x/crypto/bcrypt"
+	"gorm.io/driver/postgres"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 )
 
-var DB *sql.DB
+var DB *gorm.DB
 
 type User struct {
-	ID       int    `json:"id"`
-	FullName string `json:"full_name"`
-	Username string `json:"username"`
-	Password string `json:"-"`
-	Role     string `json:"role"`
+	ID           int       `json:"id" gorm:"primaryKey"`
+	FullName     string    `json:"full_name"`
+	Username     string    `json:"username" gorm:"uniqueIndex"`
+	PasswordHash string    `json:"-"`
+	Role         string    `json:"role" gorm:"default:'user'"`
+	Expenses     []Expense `json:"-" gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE;"`
 }
 
 type Expense struct {
-	ID          int    `json:"id"`
-	UserID      int    `json:"user_id"`
+	ID          int    `json:"id" gorm:"primaryKey"`
+	UserID      int    `json:"user_id" gorm:"index"`
 	Date        string `json:"date"`
 	Type        string `json:"type"`
 	Amount      int    `json:"amount"`
@@ -37,56 +41,45 @@ type UserStat struct {
 	TxCount  int    `json:"tx_count"`
 }
 
-// InitDB initializes the SQLite database
+// InitDB initializes the database via GORM
 func InitDB(filepath string) {
 	var err error
-	DB, err = sql.Open("sqlite", filepath)
-	if err != nil {
-		log.Fatal("Lỗi kết nối SQLite:", err)
+	var dialector gorm.Dialector
+
+	dbURL := os.Getenv("DATABASE_URL")
+	if dbURL != "" {
+		log.Println("🌍 Kết nối tới PostgreSQL Cloud...")
+		dialector = postgres.Open(dbURL)
+	} else {
+		log.Println("🏠 Kết nối tới SQLite Local...")
+		dialector = sqlite.Open(filepath)
 	}
 
-	createTables()
+	DB, err = gorm.Open(dialector, &gorm.Config{})
+	if err != nil {
+		log.Fatal("Lỗi kết nối DB:", err)
+	}
+
+	// Tự động tạo/cập nhật bảng
+	err = DB.AutoMigrate(&User{}, &Expense{})
+	if err != nil {
+		log.Fatal("Lỗi Migrate DB:", err)
+	}
+
 	seedAdmin()
 }
 
-func createTables() {
-	userTable := `
-	CREATE TABLE IF NOT EXISTS users (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		full_name TEXT NOT NULL,
-		username TEXT UNIQUE NOT NULL,
-		password_hash TEXT NOT NULL,
-		role TEXT DEFAULT 'user'
-	);`
-
-	expenseTable := `
-	CREATE TABLE IF NOT EXISTS expenses (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		user_id INTEGER NOT NULL,
-		date TEXT,
-		type TEXT,
-		amount INTEGER,
-		category TEXT,
-		description TEXT,
-		FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-	);`
-
-	_, err := DB.Exec(userTable)
-	if err != nil {
-		log.Fatal("Lỗi tạo bảng users:", err)
-	}
-	_, err = DB.Exec(expenseTable)
-	if err != nil {
-		log.Fatal("Lỗi tạo bảng expenses:", err)
-	}
-}
-
 func seedAdmin() {
-	var count int
-	DB.QueryRow("SELECT COUNT(*) FROM users WHERE username = 'admin'").Scan(&count)
+	var count int64
+	DB.Model(&User{}).Where("username = ?", "admin").Count(&count)
 	if count == 0 {
 		hash, _ := bcrypt.GenerateFromPassword([]byte("123456"), bcrypt.DefaultCost)
-		DB.Exec("INSERT INTO users (full_name, username, password_hash, role) VALUES (?, ?, ?, ?)", "Quản trị viên", "admin", string(hash), "admin")
+		DB.Create(&User{
+			FullName:     "Quản trị viên",
+			Username:     "admin",
+			PasswordHash: string(hash),
+			Role:         "admin",
+		})
 	}
 }
 
@@ -96,44 +89,51 @@ func CreateUser(fullName, username, password string) error {
 	if err != nil {
 		return err
 	}
-	_, err = DB.Exec("INSERT INTO users (full_name, username, password_hash, role) VALUES (?, ?, ?, ?)", fullName, username, string(hash), "user")
-	return err
+	
+	user := User{
+		FullName:     fullName,
+		Username:     username,
+		PasswordHash: string(hash),
+		Role:         "user",
+	}
+	result := DB.Create(&user)
+	return result.Error
 }
 
 func GetUserByUsername(username string) (*User, error) {
 	var user User
-	var hash string
-	err := DB.QueryRow("SELECT id, full_name, username, password_hash, role FROM users WHERE username = ?", username).Scan(&user.ID, &user.FullName, &user.Username, &hash, &user.Role)
-	if err != nil {
-		return nil, err
+	result := DB.Where("username = ?", username).First(&user)
+	if result.Error != nil {
+		return nil, result.Error
 	}
-	user.Password = hash
 	return &user, nil
 }
 
-func CheckPassword(hash, password string) bool {
-	err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
+func CheckPassword(user *User, password string) bool {
+	err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password))
 	return err == nil
 }
 
 // Admin Methods
 func GetAllUsers() ([]UserStat, error) {
-	rows, err := DB.Query(`
+	var stats []UserStat
+	// GORM raw query
+	rows, err := DB.Raw(`
 		SELECT u.id, u.full_name, u.username, u.role, COUNT(e.id) as tx_count
 		FROM users u
 		LEFT JOIN expenses e ON u.id = e.user_id
-		GROUP BY u.id
+		GROUP BY u.id, u.full_name, u.username, u.role
 		ORDER BY u.id DESC
-	`)
+	`).Rows()
+	
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var stats []UserStat
 	for rows.Next() {
 		var s UserStat
-		if err := rows.Scan(&s.ID, &s.FullName, &s.Username, &s.Role, &s.TxCount); err != nil {
+		if err := DB.ScanRows(rows, &s); err != nil {
 			return nil, err
 		}
 		stats = append(stats, s)
@@ -142,34 +142,21 @@ func GetAllUsers() ([]UserStat, error) {
 }
 
 func DeleteUser(id int) error {
-	// Enable foreign key constraints in SQLite connection to cascade delete expenses
-	DB.Exec("PRAGMA foreign_keys = ON")
-	_, err := DB.Exec("DELETE FROM users WHERE id = ?", id)
-	return err
+	if id == 0 {
+		return errors.New("invalid id")
+	}
+	// GORM Cascade delete if configured properly, or manual
+	return DB.Select("Expenses").Delete(&User{ID: id}).Error
 }
 
 // Expense Methods
 func AddExpense(userID int, exp *Expense) error {
-	_, err := DB.Exec(`INSERT INTO expenses (user_id, date, type, amount, category, description) 
-		VALUES (?, ?, ?, ?, ?, ?)`,
-		userID, exp.Date, exp.Type, exp.Amount, exp.Category, exp.Description)
-	return err
+	exp.UserID = userID
+	return DB.Create(exp).Error
 }
 
 func GetExpensesByUser(userID int) ([]Expense, error) {
-	rows, err := DB.Query("SELECT id, user_id, date, type, amount, category, description FROM expenses WHERE user_id = ? ORDER BY date ASC, id ASC", userID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
 	var expenses []Expense
-	for rows.Next() {
-		var e Expense
-		if err := rows.Scan(&e.ID, &e.UserID, &e.Date, &e.Type, &e.Amount, &e.Category, &e.Description); err != nil {
-			return nil, err
-		}
-		expenses = append(expenses, e)
-	}
-	return expenses, nil
+	err := DB.Where("user_id = ?", userID).Order("date ASC, id ASC").Find(&expenses).Error
+	return expenses, err
 }

@@ -98,7 +98,7 @@ func main() {
 		json.NewDecoder(r.Body).Decode(&creds)
 
 		user, err := db.GetUserByUsername(creds.Username)
-		if err != nil || !db.CheckPassword(user.Password, creds.Password) {
+		if err != nil || !db.CheckPassword(user, creds.Password) {
 			http.Error(w, `{"success": false, "error": "Sai thông tin đăng nhập"}`, http.StatusUnauthorized)
 			return
 		}
