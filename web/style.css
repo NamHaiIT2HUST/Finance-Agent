@@ -31,7 +31,7 @@ body {
     background-color: var(--bg-color);
     color: var(--text-primary);
     transition: background-color 0.3s ease, color 0.3s ease;
-    height: 100vh;
+    height: 100dvh;
     overflow: hidden;
 }
 
@@ -61,7 +61,7 @@ body {
 
 /* Auth Screen */
 .auth-container {
-    height: 100vh;
+    height: 100dvh;
     display: flex; align-items: center; justify-content: center;
     background: linear-gradient(135deg, var(--bg-color), #cbd5e1);
 }
@@ -93,7 +93,7 @@ body {
 .success-text { color: var(--color-income); font-size: 0.9rem; margin-top: 10px; }
 
 /* Main App */
-.app-container { display: flex; flex-direction: column; height: 100vh; max-width: 1200px; margin: 0 auto; }
+.app-container { display: flex; flex-direction: column; height: 100dvh; max-width: 1200px; margin: 0 auto; }
 .mobile-tabs { display: none; padding: 10px; gap: 10px; background: var(--glass-bg); }
 .tab-btn { flex: 1; padding: 10px; border: none; border-radius: 8px; background: transparent; color: var(--text-secondary); font-weight: 600; cursor: pointer; }
 .tab-btn.active { background: var(--color-balance); color: #fff; }
