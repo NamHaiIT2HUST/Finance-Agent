@@ -98,6 +98,13 @@ function logout() {
     localStorage.removeItem('username');
     localStorage.removeItem('full_name');
     localStorage.removeItem('role');
+    
+    isAdminView = false;
+    document.getElementById('dashboardTab').style.display = '';
+    document.getElementById('chatTab').style.display = '';
+    document.getElementById('adminTab').style.display = 'none';
+    document.getElementById('adminTab').style.flex = '';
+
     authScreen.style.display = 'flex';
     appUI.style.display = 'none';
 }
@@ -145,10 +152,11 @@ function toggleAdminView() {
         document.getElementById('adminTab').style.flex = '1';
         fetchAdminData();
     } else {
-        // Xóa inline style để CSS Media Queries tự động quyết định Layout
+        // Đảm bảo dashboard và chat hiện lại (bằng cách xóa inline style)
         document.getElementById('dashboardTab').style.display = '';
         document.getElementById('chatTab').style.display = '';
-        document.getElementById('adminTab').style.display = '';
+        // ĐẢM BẢO admin tab bị ẩn đi, không được phép xóa inline style của nó
+        document.getElementById('adminTab').style.display = 'none';
         document.getElementById('adminTab').style.flex = '';
     }
 }
