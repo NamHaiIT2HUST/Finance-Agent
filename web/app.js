@@ -46,8 +46,18 @@ document.addEventListener('DOMContentLoaded', () => {
     // Hàm gọi API lấy dữ liệu
     const fetchData = async () => {
         try {
-            // Trong môi trường production, API sẽ cùng host với Web App
-            const response = await fetch('/api/expenses');
+            // Gửi kèm initData để Backend kiểm chứng danh tính (Auth)
+            const response = await fetch('/api/expenses', {
+                headers: {
+                    'X-Telegram-Init-Data': tg.initData || ''
+                }
+            });
+            
+            if (response.status === 401 || response.status === 403) {
+                document.getElementById('transactionsList').innerHTML = `<div class="loading">⛔ Lỗi xác thực: Bạn không có quyền truy cập.</div>`;
+                return;
+            }
+            
             if (!response.ok) throw new Error('Network response was not ok');
             
             expensesData = await response.json();

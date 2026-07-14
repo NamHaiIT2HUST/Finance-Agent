@@ -2,12 +2,17 @@ package main
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -20,6 +25,53 @@ import (
 	"github.com/robfig/cron/v3"
 	"google.golang.org/api/option"
 )
+
+type WebAppUser struct {
+	ID int64 `json:"id"`
+}
+
+func validateTelegramWebAppData(initData, token string) (map[string]string, error) {
+	q, err := url.ParseQuery(initData)
+	if err != nil {
+		return nil, err
+	}
+
+	hash := q.Get("hash")
+	if hash == "" {
+		return nil, fmt.Errorf("missing hash")
+	}
+	q.Del("hash")
+
+	var keys []string
+	for k := range q {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	var dataCheckArr []string
+	for _, k := range keys {
+		dataCheckArr = append(dataCheckArr, fmt.Sprintf("%s=%s", k, q.Get(k)))
+	}
+	dataCheckString := strings.Join(dataCheckArr, "\n")
+
+	secretKeyMac := hmac.New(sha256.New, []byte("WebAppData"))
+	secretKeyMac.Write([]byte(token))
+	secretKey := secretKeyMac.Sum(nil)
+
+	hashMac := hmac.New(sha256.New, secretKey)
+	hashMac.Write([]byte(dataCheckString))
+	expectedHash := hex.EncodeToString(hashMac.Sum(nil))
+
+	if expectedHash != hash {
+		return nil, fmt.Errorf("invalid hash")
+	}
+
+	res := make(map[string]string)
+	for k, v := range q {
+		res[k] = v[0]
+	}
+	return res, nil
+}
 
 func main() {
 	err := godotenv.Load()
@@ -188,7 +240,41 @@ Không giải thích gì thêm.`),
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Content-Type", "application/json")
 		
-		expenses, err := tools.FetchExpensesFromSheet(os.Getenv("SPREADSHEET_ID"))
+		initData := r.Header.Get("X-Telegram-Init-Data")
+		if initData == "" {
+			http.Error(w, `{"error": "Unauthorized: Missing initData"}`, http.StatusUnauthorized)
+			return
+		}
+
+		botToken := os.Getenv("TELEGRAM_BOT_TOKEN")
+		parsedData, errAuth := validateTelegramWebAppData(initData, botToken)
+		if errAuth != nil {
+			http.Error(w, `{"error": "Unauthorized: Invalid hash"}`, http.StatusUnauthorized)
+			return
+		}
+
+		userJSON := parsedData["user"]
+		var webUser WebAppUser
+		if err := json.Unmarshal([]byte(userJSON), &webUser); err != nil {
+			http.Error(w, `{"error": "Unauthorized: Invalid user data"}`, http.StatusUnauthorized)
+			return
+		}
+
+		chatIDStr := strconv.FormatInt(webUser.ID, 10)
+		
+		// Phân quyền
+		authUsers := os.Getenv("AUTHORIZED_USERS")
+		if authUsers != "" && !strings.Contains(authUsers, chatIDStr) {
+			http.Error(w, `{"error": "Forbidden: User not allowed"}`, http.StatusForbidden)
+			return
+		}
+
+		userSpreadsheet := os.Getenv("SPREADSHEET_ID_" + chatIDStr)
+		if userSpreadsheet == "" {
+			userSpreadsheet = os.Getenv("SPREADSHEET_ID")
+		}
+
+		expenses, err := tools.FetchExpensesFromSheet(userSpreadsheet)
 		if err != nil {
 			http.Error(w, `{"error": "không thể tải dữ liệu"}`, http.StatusInternalServerError)
 			return
