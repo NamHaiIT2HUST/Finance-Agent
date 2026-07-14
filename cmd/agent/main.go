@@ -299,9 +299,12 @@ Không giải thích gì thêm.`),
 	var updates tgbotapi.UpdatesChannel
 	webhookURL := os.Getenv("WEBHOOK_URL")
 
-	if webhookURL != "" {
-		// Đăng ký Webhook với Telegram (nên dùng một path khó đoán như /<token> hoặc /webhook)
-		// Ở đây vẫn để / để tương thích cũ
+	// Chỉ kích hoạt chế độ Webhook nếu đang chạy trên Cloud (Render có biến môi trường RENDER=true)
+	// Hoặc khi có cờ ép buộc WEBHOOK_MODE=true
+	isCloud := os.Getenv("RENDER") != "" || os.Getenv("WEBHOOK_MODE") == "true"
+
+	if webhookURL != "" && isCloud {
+		// Đăng ký Webhook với Telegram
 		wh, _ := tgbotapi.NewWebhook(webhookURL + "/")
 		_, errWh := bot.Request(wh)
 		if errWh != nil {
@@ -312,7 +315,7 @@ Không giải thích gì thêm.`),
 		updates = bot.ListenForWebhook("/")
 		fmt.Printf("🚀 Agent đang chờ tin nhắn (Chế độ Webhook tại %s)...\n", webhookURL)
 	} else {
-		// Fallback về Long Polling nếu chạy ở local
+		// Chạy ở Local: Ép buộc dùng Long Polling để tránh bị LocalTunnel/Ngrok chặn Webhook
 		_, _ = bot.Request(tgbotapi.DeleteWebhookConfig{})
 		u := tgbotapi.NewUpdate(0)
 		u.Timeout = 60
