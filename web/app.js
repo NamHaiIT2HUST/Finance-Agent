@@ -40,8 +40,10 @@ async function handleLogin() {
             
             if (data.user.role === 'admin') {
                 document.getElementById('adminTabBtn').style.display = 'block';
+                document.getElementById('adminDesktopBtn').style.display = 'block';
             } else {
                 document.getElementById('adminTabBtn').style.display = 'none';
+                document.getElementById('adminDesktopBtn').style.display = 'none';
             }
 
             authScreen.style.display = 'none';
@@ -109,8 +111,10 @@ function checkLogin() {
         
         if (localStorage.getItem('role') === 'admin') {
             document.getElementById('adminTabBtn').style.display = 'block';
+            document.getElementById('adminDesktopBtn').style.display = 'block';
         } else {
             document.getElementById('adminTabBtn').style.display = 'none';
+            document.getElementById('adminDesktopBtn').style.display = 'none';
         }
 
         fetchData();
@@ -129,6 +133,24 @@ function switchTab(tabId) {
     event.target.classList.add('active');
 
     if (tabId === 'admin') fetchAdminData();
+}
+
+let isAdminView = false;
+function toggleAdminView() {
+    isAdminView = !isAdminView;
+    if (isAdminView) {
+        document.getElementById('dashboardTab').style.display = 'none';
+        document.getElementById('chatTab').style.display = 'none';
+        document.getElementById('adminTab').style.display = 'flex';
+        document.getElementById('adminTab').style.flex = '1';
+        document.getElementById('adminDesktopBtn').innerHTML = '🔙 Về Dashboard';
+        fetchAdminData();
+    } else {
+        document.getElementById('dashboardTab').style.display = 'flex';
+        document.getElementById('chatTab').style.display = 'flex';
+        document.getElementById('adminTab').style.display = 'none';
+        document.getElementById('adminDesktopBtn').innerHTML = '👑 Quản lý';
+    }
 }
 
 // Fetch Data
