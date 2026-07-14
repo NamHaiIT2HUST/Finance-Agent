@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -212,10 +213,10 @@ TUYỆT ĐỐI trả về mảng JSON hợp lệ. Không giải thích gì thêm
 		replyText = strings.TrimPrefix(replyText, "```json\n")
 		replyText = strings.TrimSuffix(replyText, "\n```")
 		replyText = strings.TrimSuffix(replyText, "```")
-		replyText = strings.ReplaceAll(replyText, ",]", "]")
-		replyText = strings.ReplaceAll(replyText, ", }", "}")
-		replyText = strings.ReplaceAll(replyText, ",}", "}")
-		replyText = strings.ReplaceAll(replyText, " \n", "")
+
+		// Dùng regex để xóa triệt để dấu phẩy thừa trước ngoặc đóng (trailing commas)
+		re := regexp.MustCompile(`,\s*([\]}])`)
+		replyText = re.ReplaceAllString(replyText, "$1")
 
 		exps, errParse := tools.ParseExpensesJSON(replyText)
 		if errParse != nil {
