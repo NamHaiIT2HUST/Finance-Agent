@@ -168,11 +168,13 @@ func main() {
 		if errFile == nil {
 			defer file.Close()
 			imgBytes, _ := io.ReadAll(file)
-			mimeType := "image/jpeg"
+			mimeType := "jpeg"
 			if strings.HasSuffix(strings.ToLower(header.Filename), ".png") {
-				mimeType = "image/png"
+				mimeType = "png"
 			} else if strings.HasSuffix(strings.ToLower(header.Filename), ".webp") {
-				mimeType = "image/webp"
+				mimeType = "webp"
+			} else if strings.HasSuffix(strings.ToLower(header.Filename), ".heic") {
+				mimeType = "heic"
 			}
 			promptParts = append(promptParts, genai.ImageData(mimeType, imgBytes))
 

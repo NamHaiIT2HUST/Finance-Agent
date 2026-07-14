@@ -96,6 +96,11 @@ function logout() {
     localStorage.removeItem('role');
     
     isAdminView = false;
+    isAdminViewingUser = false;
+    
+    // Mở lại Chat nếu trước đó Admin đang soi tài khoản
+    const chatInputArea = document.querySelector('.chat-input');
+    if (chatInputArea) chatInputArea.style.display = 'flex';
 
     // Dọn sạch dữ liệu cũ khỏi màn hình (tránh lóe lên ở lần đăng nhập sau)
     expenses = [];
@@ -487,6 +492,10 @@ const updateDashboard = () => {
             }
         }
     });
+    
+    // Cập nhật luôn cả bảng Thống kê nếu người dùng nhận thêm giao dịch mới
+    initStatsFilters();
+    updateStats();
 };
 
 // Chat UI Logic
