@@ -33,7 +33,17 @@ async function handleLogin() {
         if (data.success) {
             localStorage.setItem('jwt_token', data.token);
             localStorage.setItem('username', data.user.username);
-            document.getElementById('userNameDisplay').innerText = data.user.username;
+            localStorage.setItem('full_name', data.user.full_name);
+            localStorage.setItem('role', data.user.role);
+            
+            document.getElementById('userNameDisplay').innerText = data.user.full_name;
+            
+            if (data.user.role === 'admin') {
+                document.getElementById('adminTabBtn').style.display = 'block';
+            } else {
+                document.getElementById('adminTabBtn').style.display = 'none';
+            }
+
             authScreen.style.display = 'none';
             appUI.style.display = 'flex';
             fetchData();
@@ -48,6 +58,7 @@ async function handleLogin() {
 }
 
 async function handleRegister() {
+    const fullname = document.getElementById('regFullName').value;
     const user = document.getElementById('regUsername').value;
     const pass = document.getElementById('regPassword').value;
     const errEl = document.getElementById('regError');
@@ -57,7 +68,7 @@ async function handleRegister() {
         const res = await fetch('/api/register', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({username: user, password: pass})
+            body: JSON.stringify({full_name: fullname, username: user, password: pass})
         });
         const data = await res.json();
         
@@ -83,6 +94,8 @@ async function handleRegister() {
 function logout() {
     localStorage.removeItem('jwt_token');
     localStorage.removeItem('username');
+    localStorage.removeItem('full_name');
+    localStorage.removeItem('role');
     authScreen.style.display = 'flex';
     appUI.style.display = 'none';
 }
@@ -92,7 +105,14 @@ function checkLogin() {
     if (token) {
         authScreen.style.display = 'none';
         appUI.style.display = 'flex';
-        document.getElementById('userNameDisplay').innerText = localStorage.getItem('username') || 'User';
+        document.getElementById('userNameDisplay').innerText = localStorage.getItem('full_name') || 'User';
+        
+        if (localStorage.getItem('role') === 'admin') {
+            document.getElementById('adminTabBtn').style.display = 'block';
+        } else {
+            document.getElementById('adminTabBtn').style.display = 'none';
+        }
+
         fetchData();
     } else {
         authScreen.style.display = 'flex';
@@ -102,11 +122,13 @@ function checkLogin() {
 
 // Tab Switching
 function switchTab(tabId) {
-    document.querySelectorAll('.dashboard-panel, .chat-panel').forEach(el => el.classList.remove('active-tab'));
+    document.querySelectorAll('.dashboard-panel, .chat-panel, .admin-panel').forEach(el => el.classList.remove('active-tab'));
     document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
     
     document.getElementById(tabId + 'Tab').classList.add('active-tab');
     event.target.classList.add('active');
+
+    if (tabId === 'admin') fetchAdminData();
 }
 
 // Fetch Data
@@ -127,6 +149,56 @@ const fetchData = async () => {
         console.error('Lỗi fetch data:', error);
     }
 };
+
+// Admin Panel Logic
+async function fetchAdminData() {
+    const token = localStorage.getItem('jwt_token');
+    try {
+        const res = await fetch('/api/admin/users', { headers: { 'Authorization': 'Bearer ' + token } });
+        const users = await res.json();
+        
+        const listEl = document.getElementById('adminUserList');
+        listEl.innerHTML = '';
+        if (!users || users.length === 0) return;
+
+        users.forEach(u => {
+            const item = document.createElement('div');
+            item.className = 'transaction-item glass-card';
+            const roleBadge = u.role === 'admin' ? '<span class="role-badge">Admin</span>' : '';
+            item.innerHTML = `
+                <div>
+                    <strong style="display:block">${u.full_name} ${roleBadge}</strong>
+                    <small style="color:var(--text-secondary)">@${u.username} • ${u.tx_count} giao dịch</small>
+                </div>
+                ${u.role !== 'admin' ? `<button class="del-btn" onclick="deleteUser(${u.id})">Xóa</button>` : ''}
+            `;
+            listEl.appendChild(item);
+        });
+    } catch (e) {
+        console.error("Lỗi lấy data admin", e);
+    }
+}
+
+async function deleteUser(id) {
+    if (!confirm("Bạn có chắc chắn muốn xóa user này và toàn bộ dữ liệu của họ?")) return;
+    const token = localStorage.getItem('jwt_token');
+    try {
+        const res = await fetch('/api/admin/users', {
+            method: 'DELETE',
+            headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+            body: JSON.stringify({id: id})
+        });
+        const data = await res.json();
+        if (data.success) {
+            alert('Đã xóa thành công!');
+            fetchAdminData();
+        } else {
+            alert('Lỗi: ' + data.error);
+        }
+    } catch (e) {
+        alert('Lỗi kết nối máy chủ');
+    }
+}
 
 // Update Dashboard
 const updateDashboard = () => {

@@ -89,7 +89,7 @@ body {
 .logout-tab { color: var(--color-expense); }
 
 .split-layout { display: flex; flex: 1; overflow: hidden; gap: 20px; padding: 20px; }
-.dashboard-panel, .chat-panel { flex: 1; display: flex; flex-direction: column; gap: 20px; overflow-y: auto; padding-right: 10px; }
+.dashboard-panel, .chat-panel, .admin-panel { flex: 1; display: flex; flex-direction: column; gap: 20px; overflow-y: auto; padding-right: 10px; }
 
 /* Header Elements */
 .header { display: flex; justify-content: space-between; align-items: center; }
@@ -135,6 +135,14 @@ body {
 @media (max-width: 768px) {
     .split-layout { flex-direction: column; padding: 0; gap: 0; }
     .mobile-tabs { display: flex; }
-    .dashboard-panel, .chat-panel { padding: 20px; display: none; height: 100%; }
+    .dashboard-panel, .chat-panel, .admin-panel { padding: 20px; display: none; height: 100%; }
     .active-tab { display: flex !important; }
+}
+
+.del-btn {
+    background: var(--color-expense);
+    color: white; border: none; padding: 6px 12px; border-radius: 8px; cursor: pointer; font-size: 0.8rem;
+}
+.role-badge {
+    background: #eab308; color: white; padding: 2px 6px; border-radius: 12px; font-size: 0.7rem; font-weight: bold; margin-left: 8px;
 }

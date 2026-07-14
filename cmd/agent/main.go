@@ -25,15 +25,17 @@ var jwtKey = []byte("super_secret_finance_key_2026")
 
 type Claims struct {
 	UserID   int    `json:"user_id"`
+	FullName string `json:"full_name"`
 	Username string `json:"username"`
+	Role     string `json:"role"`
 	jwt.RegisteredClaims
 }
 
 // CheckAuth Middleware
-func getAuthUserID(r *http.Request) (int, error) {
+func getAuthUser(r *http.Request) (*Claims, error) {
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" {
-		return 0, fmt.Errorf("missing token")
+		return nil, fmt.Errorf("missing token")
 	}
 	tokenStr := strings.TrimPrefix(authHeader, "Bearer ")
 	claims := &Claims{}
@@ -41,9 +43,9 @@ func getAuthUserID(r *http.Request) (int, error) {
 		return jwtKey, nil
 	})
 	if err != nil || !token.Valid {
-		return 0, fmt.Errorf("invalid token")
+		return nil, fmt.Errorf("invalid token")
 	}
-	return claims.UserID, nil
+	return claims, nil
 }
 
 func main() {
@@ -66,17 +68,18 @@ func main() {
 	http.HandleFunc("/api/register", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		var creds struct {
+			FullName string `json:"full_name"`
 			Username string `json:"username"`
 			Password string `json:"password"`
 		}
 		json.NewDecoder(r.Body).Decode(&creds)
 
-		if creds.Username == "" || creds.Password == "" {
-			http.Error(w, `{"success": false, "error": "Thiếu username/password"}`, http.StatusBadRequest)
+		if creds.FullName == "" || creds.Username == "" || creds.Password == "" {
+			http.Error(w, `{"success": false, "error": "Thiếu thông tin"}`, http.StatusBadRequest)
 			return
 		}
 
-		err := db.CreateUser(creds.Username, creds.Password)
+		err := db.CreateUser(creds.FullName, creds.Username, creds.Password)
 		if err != nil {
 			http.Error(w, `{"success": false, "error": "Tên đăng nhập đã tồn tại"}`, http.StatusConflict)
 			return
@@ -104,7 +107,9 @@ func main() {
 		expirationTime := time.Now().Add(24 * time.Hour)
 		claims := &Claims{
 			UserID:   user.ID,
+			FullName: user.FullName,
 			Username: user.Username,
+			Role:     user.Role,
 			RegisteredClaims: jwt.RegisteredClaims{
 				ExpiresAt: jwt.NewNumericDate(expirationTime),
 			},
@@ -115,20 +120,20 @@ func main() {
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"success": true,
 			"token":   tokenString,
-			"user":    map[string]interface{}{"id": user.ID, "username": user.Username},
+			"user":    map[string]interface{}{"id": user.ID, "full_name": user.FullName, "username": user.Username, "role": user.Role},
 		})
 	})
 
 	// Lấy danh sách chi tiêu (của User đang đăng nhập)
 	http.HandleFunc("/api/expenses", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		userID, err := getAuthUserID(r)
+		user, err := getAuthUser(r)
 		if err != nil {
 			http.Error(w, `{"error": "Unauthorized"}`, http.StatusUnauthorized)
 			return
 		}
 
-		expenses, err := db.GetExpensesByUser(userID)
+		expenses, err := db.GetExpensesByUser(user.UserID)
 		if err != nil {
 			http.Error(w, `{"error": "Không thể tải dữ liệu"}`, http.StatusInternalServerError)
 			return
@@ -143,7 +148,7 @@ func main() {
 	// API Chat & AI
 	http.HandleFunc("/api/chat", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		userID, errAuth := getAuthUserID(r)
+		user, errAuth := getAuthUser(r)
 		if errAuth != nil {
 			http.Error(w, `{"error": "Unauthorized"}`, http.StatusUnauthorized)
 			return
@@ -248,14 +253,14 @@ TUYỆT ĐỐI trả về mảng JSON hợp lệ. Không giải thích gì thêm
 		var finalExps []db.Expense
 		for _, exp := range exps {
 			dbExp := db.Expense{
-				UserID:      userID,
+				UserID:      user.UserID,
 				Date:        exp.Date,
 				Type:        exp.Type,
 				Amount:      exp.Amount,
 				Category:    exp.Category,
 				Description: exp.Description,
 			}
-			errSheet := db.AddExpense(userID, &dbExp)
+			errSheet := db.AddExpense(user.UserID, &dbExp)
 			if errSheet != nil {
 				continue
 			}
@@ -266,6 +271,40 @@ TUYỆT ĐỐI trả về mảng JSON hợp lệ. Không giải thích gì thêm
 		replyStr += fmt.Sprintf("\n💰 Tổng cộng: %d đ", totalAdded)
 
 		json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "reply": replyStr, "expenses": finalExps})
+	})
+
+	// Admin API
+	http.HandleFunc("/api/admin/users", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		user, err := getAuthUser(r)
+		if err != nil || user.Role != "admin" {
+			http.Error(w, `{"error": "Forbidden"}`, http.StatusForbidden)
+			return
+		}
+
+		if r.Method == "GET" {
+			users, err := db.GetAllUsers()
+			if err != nil {
+				http.Error(w, `{"error": "Lỗi lấy dữ liệu"}`, http.StatusInternalServerError)
+				return
+			}
+			json.NewEncoder(w).Encode(users)
+		} else if r.Method == "DELETE" {
+			var payload struct {
+				ID int `json:"id"`
+			}
+			json.NewDecoder(r.Body).Decode(&payload)
+			if payload.ID == user.UserID {
+				http.Error(w, `{"error": "Không thể xóa chính mình"}`, http.StatusBadRequest)
+				return
+			}
+			err := db.DeleteUser(payload.ID)
+			if err != nil {
+				http.Error(w, `{"error": "Lỗi xóa user"}`, http.StatusInternalServerError)
+				return
+			}
+			json.NewEncoder(w).Encode(map[string]bool{"success": true})
+		}
 	})
 
 	http.Handle("/", http.FileServer(http.Dir("./web")))

@@ -26,6 +26,7 @@
 
             <div id="registerForm" style="display: none;">
                 <h3>Đăng ký tài khoản</h3>
+                <input type="text" id="regFullName" placeholder="Họ và tên của bạn">
                 <input type="text" id="regUsername" placeholder="Tên đăng nhập mới">
                 <input type="password" id="regPassword" placeholder="Mật khẩu bảo mật">
                 <button onclick="handleRegister()" class="primary-btn">Tạo Tài Khoản</button>
@@ -43,6 +44,7 @@
         <div class="mobile-tabs">
             <button class="tab-btn active" onclick="switchTab('dashboard')">📊 Tổng quan</button>
             <button class="tab-btn" onclick="switchTab('chat')">💬 Trợ lý AI</button>
+            <button class="tab-btn" id="adminTabBtn" onclick="switchTab('admin')" style="display: none;">👑 Admin</button>
             <button class="tab-btn logout-tab" onclick="logout()">🚪 Thoát</button>
         </div>
 
@@ -119,6 +121,23 @@
                         <button type="submit" class="send-btn">➤</button>
                     </form>
                 </div>
+            </div>
+
+            <!-- Admin Interface -->
+            <div id="adminTab" class="admin-panel" style="display: none;">
+                <header class="glass-panel header">
+                    <h2>👑 Quản trị Người dùng</h2>
+                    <button class="reload-btn" onclick="fetchAdminData()">🔄 Cập nhật</button>
+                </header>
+                
+                <section class="glass-panel transactions-section">
+                    <div class="section-header">
+                        <h2>Danh sách Tài khoản</h2>
+                    </div>
+                    <div id="adminUserList" class="transactions-list">
+                        <div class="loading">Đang tải dữ liệu...</div>
+                    </div>
+                </section>
             </div>
         </div>
     </div>
