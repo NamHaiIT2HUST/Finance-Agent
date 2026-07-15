@@ -233,22 +233,7 @@ TUYỆT ĐỐI trả về mảng JSON hợp lệ. Không giải thích gì thêm
 			},
 		}
 
-		var resp *genai.GenerateContentResponse
-		var errGen error
-		
-		// Thử lại tối đa 3 lần nếu gặp lỗi Quota (429) do Google AI giới hạn
-		for i := 0; i < 3; i++ {
-			resp, errGen = model.GenerateContent(ctx, promptParts...)
-			if errGen == nil {
-				break
-			}
-			if strings.Contains(errGen.Error(), "429") || strings.Contains(errGen.Error(), "Quota") {
-				time.Sleep(time.Duration(2 * (i + 1)) * time.Second) // Đợi 2s, 4s...
-				continue
-			}
-			break
-		}
-
+		resp, errGen := model.GenerateContent(ctx, promptParts...)
 		if errGen != nil {
 			errMsg := "❌ Lỗi AI: " + errGen.Error()
 			if strings.Contains(errGen.Error(), "429") || strings.Contains(errGen.Error(), "Quota") {
