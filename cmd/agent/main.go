@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -243,6 +242,8 @@ TUYỆT ĐỐI trả về mảng JSON hợp lệ. Không giải thích gì thêm
 		if maxRetries < 1 {
 			maxRetries = 1
 		}
+
+		ctx := r.Context()
 
 		// Xoay vòng qua các API Key để thử lại nếu dính Quota
 		for i := 0; i < maxRetries; i++ {
