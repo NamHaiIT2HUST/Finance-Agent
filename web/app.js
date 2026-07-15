@@ -564,11 +564,44 @@ function appendMessage(text, isUser = false, imgUrl = null) {
 function previewImage(event) {
     const file = event.target.files[0];
     if (file) {
-        selectedFile = file;
         const reader = new FileReader();
         reader.onload = function(e) {
-            previewImg.src = e.target.result;
-            imagePreview.style.display = 'inline-block';
+            const img = new Image();
+            img.onload = function() {
+                const canvas = document.createElement('canvas');
+                const MAX_WIDTH = 1000;
+                const MAX_HEIGHT = 1000;
+                let width = img.width;
+                let height = img.height;
+
+                if (width > height) {
+                    if (width > MAX_WIDTH) {
+                        height *= MAX_WIDTH / width;
+                        width = MAX_WIDTH;
+                    }
+                } else {
+                    if (height > MAX_HEIGHT) {
+                        width *= MAX_HEIGHT / height;
+                        height = MAX_HEIGHT;
+                    }
+                }
+                canvas.width = width;
+                canvas.height = height;
+
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+                
+                // Hiển thị preview
+                previewImg.src = canvas.toDataURL('image/jpeg', 0.8);
+                imagePreview.style.display = 'inline-block';
+                
+                // Gán file đã nén vào selectedFile
+                canvas.toBlob((blob) => {
+                    // Tạo một file mới từ blob với định dạng jpeg
+                    selectedFile = new File([blob], "upload.jpg", { type: "image/jpeg" });
+                }, 'image/jpeg', 0.8);
+            };
+            img.src = e.target.result;
         }
         reader.readAsDataURL(file);
     }
