@@ -156,7 +156,7 @@ func DeleteUser(id int) error {
 		return errors.New("invalid id")
 	}
 	// GORM Cascade delete if configured properly, or manual
-	return DB.Select("Expenses").Delete(&User{ID: id}).Error
+	return DB.Select("Expenses", "Messages").Delete(&User{ID: id}).Error
 }
 
 // Expense Methods
