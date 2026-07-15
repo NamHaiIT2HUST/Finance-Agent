@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/NAMHAIIT2HUST/Finance-Agent/internal/db"
@@ -23,6 +24,22 @@ import (
 )
 
 var jwtKey = []byte("super_secret_finance_key_2026")
+
+// Cấu hình xoay vòng (Rotate) API Keys để chống Quá Tải
+var apiKeys []string
+var currentKeyIndex int
+var keyMutex sync.Mutex
+
+func getNextAPIKey() string {
+	keyMutex.Lock()
+	defer keyMutex.Unlock()
+	if len(apiKeys) == 0 {
+		return os.Getenv("GEMINI_API_KEY")
+	}
+	key := apiKeys[currentKeyIndex]
+	currentKeyIndex = (currentKeyIndex + 1) % len(apiKeys)
+	return key
+}
 
 type Claims struct {
 	UserID   int    `json:"user_id"`
@@ -58,12 +75,20 @@ func main() {
 	// Initialize SQLite Database
 	db.InitDB("./finance.db")
 
-	ctx := context.Background()
-	aiClient, err := genai.NewClient(ctx, option.WithAPIKey(os.Getenv("GEMINI_API_KEY")))
-	if err != nil {
-		log.Fatalf("Lỗi khởi tạo Gemini: %v", err)
+	// Parse API Keys từ biến môi trường (Hỗ trợ cấu hình nhiều key để xoay vòng)
+	keyStr := os.Getenv("GEMINI_API_KEY")
+	if keyStr != "" {
+		keys := strings.Split(keyStr, ",")
+		for _, k := range keys {
+			k = strings.TrimSpace(k)
+			if k != "" {
+				apiKeys = append(apiKeys, k)
+			}
+		}
 	}
-	defer aiClient.Close()
+	if len(apiKeys) == 0 {
+		log.Println("Lưu ý: Chưa cấu hình GEMINI_API_KEY hợp lệ")
+	}
 
 	// API Đăng ký
 	http.HandleFunc("/api/register", func(w http.ResponseWriter, r *http.Request) {
@@ -199,7 +224,6 @@ func main() {
 
 		promptParts = append(promptParts, genai.Text(userText))
 
-		model := aiClient.GenerativeModel("gemini-3.5-flash")
 		currentDate := time.Now().Format("2006-01-02")
 		promptText := fmt.Sprintf(`Hôm nay là ngày %s. Bạn là một Agent quản lý tài chính cá nhân.
 Người dùng sẽ nói về các khoản thu nhập hoặc chi tiêu. Nếu họ không nói rõ ngày, MẶC ĐỊNH lấy ngày hôm nay (%s). Nếu người dùng gửi hóa đơn siêu thị dài, hãy bóc tách TỪNG MÓN HÀNG thành các khoản riêng biệt.
@@ -212,28 +236,55 @@ Nhiệm vụ: Phân tích và CHỈ trả về một MẢNG (ARRAY) JSON, mỗi 
 Ví dụ: [{"date": "%s", "type": "Chi", "amount": 50000, "category": "Ăn uống", "description": "Phở"}]
 TUYỆT ĐỐI trả về mảng JSON hợp lệ. Không giải thích gì thêm.`, currentDate, currentDate, currentDate)
 
-		model.SystemInstruction = &genai.Content{
-			Parts: []genai.Part{
-				genai.Text(promptText),
-			},
-		}
-		model.ResponseMIMEType = "application/json"
-		model.ResponseSchema = &genai.Schema{
-			Type: genai.TypeArray,
-			Items: &genai.Schema{
-				Type: genai.TypeObject,
-				Properties: map[string]*genai.Schema{
-					"date":        {Type: genai.TypeString},
-					"type":        {Type: genai.TypeString},
-					"amount":      {Type: genai.TypeInteger},
-					"category":    {Type: genai.TypeString},
-					"description": {Type: genai.TypeString},
-				},
-				Required: []string{"date", "type", "amount", "category", "description"},
-			},
+		var resp *genai.GenerateContentResponse
+		var errGen error
+		
+		maxRetries := len(apiKeys)
+		if maxRetries < 1 {
+			maxRetries = 1
 		}
 
-		resp, errGen := model.GenerateContent(ctx, promptParts...)
+		// Xoay vòng qua các API Key để thử lại nếu dính Quota
+		for i := 0; i < maxRetries; i++ {
+			apiKey := getNextAPIKey()
+			client, err := genai.NewClient(ctx, option.WithAPIKey(apiKey))
+			if err != nil {
+				continue
+			}
+			
+			model := client.GenerativeModel("gemini-3.5-flash")
+			model.SystemInstruction = &genai.Content{
+				Parts: []genai.Part{genai.Text(promptText)},
+			}
+			model.ResponseMIMEType = "application/json"
+			model.ResponseSchema = &genai.Schema{
+				Type: genai.TypeArray,
+				Items: &genai.Schema{
+					Type: genai.TypeObject,
+					Properties: map[string]*genai.Schema{
+						"date":        {Type: genai.TypeString},
+						"type":        {Type: genai.TypeString},
+						"amount":      {Type: genai.TypeInteger},
+						"category":    {Type: genai.TypeString},
+						"description": {Type: genai.TypeString},
+					},
+					Required: []string{"date", "type", "amount", "category", "description"},
+				},
+			}
+
+			resp, errGen = model.GenerateContent(ctx, promptParts...)
+			client.Close()
+
+			if errGen == nil {
+				break
+			}
+			// Nếu gặp lỗi khác Quota (như ảnh hỏng, sai cú pháp), thì break luôn không thử key khác
+			if !strings.Contains(errGen.Error(), "429") && !strings.Contains(errGen.Error(), "Quota") {
+				break
+			}
+			// Nếu lỗi Quota, tiếp tục vòng lặp với Key tiếp theo
+		}
+
 		if errGen != nil {
 			errMsg := "❌ Lỗi AI: " + errGen.Error()
 			if strings.Contains(errGen.Error(), "429") || strings.Contains(errGen.Error(), "Quota") {
