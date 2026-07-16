@@ -75,15 +75,19 @@ func processChatJob(job ChatJob) {
 	ctx := context.Background()
 
 	currentDate := time.Now().Format("2006-01-02")
-	promptText := fmt.Sprintf(`Hôm nay là ngày %s. Bạn là một Agent quản lý tài chính cá nhân.
-Người dùng sẽ nói về các khoản thu nhập hoặc chi tiêu. Nếu họ không nói rõ ngày, MẶC ĐỊNH lấy ngày hôm nay (%s). Nếu người dùng gửi hóa đơn siêu thị dài, hãy bóc tách TỪNG MÓN HÀNG thành các khoản riêng biệt.
-Nhiệm vụ: Phân tích và CHỈ trả về một MẢNG (ARRAY) JSON, mỗi phần tử có các key: 
+	promptText := fmt.Sprintf(`Hôm nay là ngày %s. Bạn là một Agent quản lý tài chính cá nhân tinh tế và thông minh.
+Người dùng sẽ gửi tin nhắn hoặc ảnh hóa đơn, bill chuyển khoản. Nếu không rõ ngày, MẶC ĐỊNH dùng ngày hôm nay (%s).
+PHÂN LOẠI DANH MỤC THÔNG MINH theo danh sách BẮT BUỘC sau:
+- CHI: "Ăn uống", "Di chuyển", "Hóa đơn & Tiện ích" (điện, nước, internet...), "Mua sắm", "Giải trí", "Sức khỏe", "Chuyển tiền".
+- THU: "Lương", "Thưởng", "Kinh doanh", "Được tặng", "Thu nhập khác".
+*Chú ý đặc biệt: Tiền điện, tiền nước phải thuộc "Hóa đơn & Tiện ích", tuyệt đối không phân vào "Ăn uống". Nếu là mua vé xem phim thì là "Giải trí".
+Nhiệm vụ: Phân tích và CHỈ trả về một MẢNG (ARRAY) JSON có các key: 
 - "date" (YYYY-MM-DD)
 - "type" ("Thu" hoặc "Chi")
 - "amount" (số nguyên dương)
-- "category" (nhóm chi tiêu/thu nhập)
-- "description".
-Ví dụ: [{"date": "%s", "type": "Chi", "amount": 50000, "category": "Ăn uống", "description": "Phở"}]
+- "category" (1 trong các danh mục trên)
+- "description" (Tóm tắt ngắn gọn, dễ hiểu).
+Ví dụ: [{"date": "%s", "type": "Chi", "amount": 10000, "category": "Hóa đơn & Tiện ích", "description": "Đóng tiền nước"}]
 TUYỆT ĐỐI trả về mảng JSON hợp lệ. Không giải thích gì thêm.`, currentDate, currentDate, currentDate)
 
 	var resp *genai.GenerateContentResponse
@@ -135,8 +139,12 @@ TUYỆT ĐỐI trả về mảng JSON hợp lệ. Không giải thích gì thêm
 
 	if errGen != nil {
 		errMsg := "❌ Lỗi AI: " + errGen.Error()
+		// Nếu hết quota thật sự từ Google, ta sẽ ngủ 20s và Đẩy lại vào Hàng đợi để nó thử lại cho đến khi thành công!
 		if strings.Contains(errGen.Error(), "429") || strings.Contains(errGen.Error(), "Quota") {
-			errMsg = "Hệ thống AI đang quá tải, vui lòng thử lại sau."
+			log.Println("Hệ thống Google AI đang tạm đầy, hệ thống tự động Sleep 20s và Retry lại...")
+			time.Sleep(20 * time.Second)
+			jobQueue <- job // Push back to queue!
+			return
 		}
 		db.UpdateMessage(job.AIMessageID, errMsg, "error")
 		return
