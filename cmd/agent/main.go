@@ -29,6 +29,21 @@ var apiKeys []string
 var currentKeyIndex int
 var keyMutex sync.Mutex
 
+// Cơ chế Rate Limiter toàn cục (Đảm bảo không vượt quá 15 request/phút của bản Free)
+var aiRateMutex sync.Mutex
+var lastAIRequest time.Time
+
+func waitGlobalRateLimit() {
+	aiRateMutex.Lock()
+	defer aiRateMutex.Unlock()
+	
+	elapsed := time.Since(lastAIRequest)
+	if elapsed < 4*time.Second {
+		time.Sleep(4*time.Second - elapsed)
+	}
+	lastAIRequest = time.Now()
+}
+
 func getNextAPIKey() string {
 	keyMutex.Lock()
 	defer keyMutex.Unlock()
@@ -273,6 +288,7 @@ TUYỆT ĐỐI trả về mảng JSON hợp lệ. Không giải thích gì thêm
 				},
 			}
 
+			waitGlobalRateLimit()
 			resp, errGen = model.GenerateContent(ctx, promptParts...)
 			client.Close()
 
