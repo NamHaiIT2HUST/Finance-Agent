@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -14,7 +15,6 @@ import (
 	"time"
 
 	"github.com/NAMHAIIT2HUST/Finance-Agent/internal/db"
-	"github.com/NAMHAIIT2HUST/Finance-Agent/internal/tools"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/generative-ai-go/genai"
@@ -53,6 +53,142 @@ func getNextAPIKey() string {
 	key := apiKeys[currentKeyIndex]
 	currentKeyIndex = (currentKeyIndex + 1) % len(apiKeys)
 	return key
+}
+
+// Khai báo cấu trúc Job cho Hàng đợi Bất đồng bộ
+type ChatJob struct {
+	UserID      int
+	UserText    string
+	PromptParts []genai.Part
+	AIMessageID int // ID của tin nhắn chờ (pending) trong Database
+}
+
+var jobQueue = make(chan ChatJob, 1000)
+
+func startAIWorker() {
+	for job := range jobQueue {
+		processChatJob(job)
+	}
+}
+
+func processChatJob(job ChatJob) {
+	ctx := context.Background()
+
+	currentDate := time.Now().Format("2006-01-02")
+	promptText := fmt.Sprintf(`Hôm nay là ngày %s. Bạn là một Agent quản lý tài chính cá nhân.
+Người dùng sẽ nói về các khoản thu nhập hoặc chi tiêu. Nếu họ không nói rõ ngày, MẶC ĐỊNH lấy ngày hôm nay (%s). Nếu người dùng gửi hóa đơn siêu thị dài, hãy bóc tách TỪNG MÓN HÀNG thành các khoản riêng biệt.
+Nhiệm vụ: Phân tích và CHỈ trả về một MẢNG (ARRAY) JSON, mỗi phần tử có các key: 
+- "date" (YYYY-MM-DD)
+- "type" ("Thu" hoặc "Chi")
+- "amount" (số nguyên dương)
+- "category" (nhóm chi tiêu/thu nhập)
+- "description".
+Ví dụ: [{"date": "%s", "type": "Chi", "amount": 50000, "category": "Ăn uống", "description": "Phở"}]
+TUYỆT ĐỐI trả về mảng JSON hợp lệ. Không giải thích gì thêm.`, currentDate, currentDate, currentDate)
+
+	var resp *genai.GenerateContentResponse
+	var errGen error
+
+	maxRetries := len(apiKeys)
+	if maxRetries < 1 {
+		maxRetries = 1
+	}
+
+	for i := 0; i < maxRetries; i++ {
+		apiKey := getNextAPIKey()
+		client, err := genai.NewClient(ctx, option.WithAPIKey(apiKey))
+		if err != nil {
+			continue
+		}
+		
+		model := client.GenerativeModel("gemini-3.5-flash")
+		model.SystemInstruction = &genai.Content{
+			Parts: []genai.Part{genai.Text(promptText)},
+		}
+		model.ResponseMIMEType = "application/json"
+		model.ResponseSchema = &genai.Schema{
+			Type: genai.TypeArray,
+			Items: &genai.Schema{
+				Type: genai.TypeObject,
+				Properties: map[string]*genai.Schema{
+					"date":        {Type: genai.TypeString},
+					"type":        {Type: genai.TypeString},
+					"amount":      {Type: genai.TypeInteger},
+					"category":    {Type: genai.TypeString},
+					"description": {Type: genai.TypeString},
+				},
+				Required: []string{"date", "type", "amount", "category", "description"},
+			},
+		}
+
+		waitGlobalRateLimit() // Điều tiết 15 RPM ở đây!
+		resp, errGen = model.GenerateContent(ctx, job.PromptParts...)
+		client.Close()
+
+		if errGen == nil {
+			break
+		}
+		if !strings.Contains(errGen.Error(), "429") && !strings.Contains(errGen.Error(), "Quota") {
+			break
+		}
+	}
+
+	if errGen != nil {
+		errMsg := "❌ Lỗi AI: " + errGen.Error()
+		if strings.Contains(errGen.Error(), "429") || strings.Contains(errGen.Error(), "Quota") {
+			errMsg = "Hệ thống AI đang quá tải, vui lòng thử lại sau."
+		}
+		db.UpdateMessage(job.AIMessageID, errMsg, "error")
+		return
+	}
+
+	var replyText string
+	for _, part := range resp.Candidates[0].Content.Parts {
+		replyText = fmt.Sprintf("%v", part)
+	}
+
+	replyText = strings.TrimSpace(replyText)
+	replyText = strings.TrimPrefix(replyText, "```json\n")
+	replyText = strings.TrimPrefix(replyText, "```json")
+	replyText = strings.TrimSuffix(replyText, "\n```")
+	replyText = strings.TrimSuffix(replyText, "```")
+
+	re := regexp.MustCompile(`,\s*([\]}])`)
+	replyText = re.ReplaceAllString(replyText, "$1")
+
+	var expenses []db.Expense
+	errJSON := json.Unmarshal([]byte(replyText), &expenses)
+	if errJSON != nil {
+		db.UpdateMessage(job.AIMessageID, "❌ Lỗi đọc dữ liệu AI: "+errJSON.Error()+"\nRaw: "+replyText, "error")
+		return
+	}
+
+	totalAmount := 0
+	var replyLines []string
+	for _, exp := range expenses {
+		if exp.Amount <= 0 || exp.Date == "" || exp.Type == "" {
+			continue
+		}
+		errSave := db.AddExpense(job.UserID, &exp)
+		if errSave != nil {
+			log.Printf("Lỗi lưu DB: %v", errSave)
+			continue
+		}
+		totalAmount += exp.Amount
+		emoji := "🔴"
+		if exp.Type == "Thu" {
+			emoji = "🟢"
+		}
+		replyLines = append(replyLines, fmt.Sprintf("- %s [%s] %s - %d đ (%s)", emoji, exp.Type, exp.Description, exp.Amount, exp.Category))
+	}
+
+	if len(replyLines) == 0 {
+		db.UpdateMessage(job.AIMessageID, "❌ Không tìm thấy khoản thu/chi nào hợp lệ.", "error")
+		return
+	}
+
+	replyStr := "✅ Đã ghi vào sổ:\n" + strings.Join(replyLines, "\n") + fmt.Sprintf("\n🔒 Tổng cộng: %d đ", totalAmount)
+	db.UpdateMessage(job.AIMessageID, replyStr, "completed")
 }
 
 type Claims struct {
@@ -103,6 +239,9 @@ func main() {
 	if len(apiKeys) == 0 {
 		log.Println("Lưu ý: Chưa cấu hình GEMINI_API_KEY hợp lệ")
 	}
+
+	// Khởi chạy Hàng đợi Xử lý AI Bất đồng bộ
+	go startAIWorker()
 
 	// API Đăng ký
 	http.HandleFunc("/api/register", func(w http.ResponseWriter, r *http.Request) {
@@ -234,132 +373,56 @@ func main() {
 				savedUserText = "📷 Đã gửi một ảnh: " + r.FormValue("text")
 			}
 		}
-		db.SaveMessage(user.UserID, true, savedUserText)
+		db.SaveMessage(user.UserID, true, savedUserText, "completed")
 
 		promptParts = append(promptParts, genai.Text(userText))
 
-		currentDate := time.Now().Format("2006-01-02")
-		promptText := fmt.Sprintf(`Hôm nay là ngày %s. Bạn là một Agent quản lý tài chính cá nhân.
-Người dùng sẽ nói về các khoản thu nhập hoặc chi tiêu. Nếu họ không nói rõ ngày, MẶC ĐỊNH lấy ngày hôm nay (%s). Nếu người dùng gửi hóa đơn siêu thị dài, hãy bóc tách TỪNG MÓN HÀNG thành các khoản riêng biệt.
-Nhiệm vụ: Phân tích và CHỈ trả về một MẢNG (ARRAY) JSON, mỗi phần tử có các key: 
-- "date" (YYYY-MM-DD)
-- "type" ("Thu" hoặc "Chi")
-- "amount" (số nguyên dương)
-- "category" (nhóm chi tiêu/thu nhập)
-- "description".
-Ví dụ: [{"date": "%s", "type": "Chi", "amount": 50000, "category": "Ăn uống", "description": "Phở"}]
-TUYỆT ĐỐI trả về mảng JSON hợp lệ. Không giải thích gì thêm.`, currentDate, currentDate, currentDate)
+		// Lưu một tin nhắn AI giả vào DB trạng thái pending
+		pendingMsg, _ := db.SaveMessage(user.UserID, false, "⏳ AI đang phân tích (Bạn đang ở trong hàng đợi)...", "pending")
 
-		var resp *genai.GenerateContentResponse
-		var errGen error
-		
-		maxRetries := len(apiKeys)
-		if maxRetries < 1 {
-			maxRetries = 1
+		// Đẩy vào hàng đợi để worker xử lý (non-blocking)
+		jobQueue <- ChatJob{
+			UserID:      user.UserID,
+			UserText:    userText,
+			PromptParts: promptParts,
+			AIMessageID: pendingMsg.ID,
 		}
 
-		ctx := r.Context()
+		// Trả về ngay cho Frontend
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success":    true,
+			"message_id": pendingMsg.ID,
+		})
+	})
 
-		// Xoay vòng qua các API Key để thử lại nếu dính Quota
-		for i := 0; i < maxRetries; i++ {
-			apiKey := getNextAPIKey()
-			client, err := genai.NewClient(ctx, option.WithAPIKey(apiKey))
-			if err != nil {
-				continue
-			}
-			
-			model := client.GenerativeModel("gemini-3.5-flash")
-			model.SystemInstruction = &genai.Content{
-				Parts: []genai.Part{genai.Text(promptText)},
-			}
-			model.ResponseMIMEType = "application/json"
-			model.ResponseSchema = &genai.Schema{
-				Type: genai.TypeArray,
-				Items: &genai.Schema{
-					Type: genai.TypeObject,
-					Properties: map[string]*genai.Schema{
-						"date":        {Type: genai.TypeString},
-						"type":        {Type: genai.TypeString},
-						"amount":      {Type: genai.TypeInteger},
-						"category":    {Type: genai.TypeString},
-						"description": {Type: genai.TypeString},
-					},
-					Required: []string{"date", "type", "amount", "category", "description"},
-				},
-			}
-
-			waitGlobalRateLimit()
-			resp, errGen = model.GenerateContent(ctx, promptParts...)
-			client.Close()
-
-			if errGen == nil {
-				break
-			}
-			// Nếu gặp lỗi khác Quota (như ảnh hỏng, sai cú pháp), thì break luôn không thử key khác
-			if !strings.Contains(errGen.Error(), "429") && !strings.Contains(errGen.Error(), "Quota") {
-				break
-			}
-			// Nếu lỗi Quota, tiếp tục vòng lặp với Key tiếp theo
-		}
-
-		if errGen != nil {
-			errMsg := "❌ Lỗi AI: " + errGen.Error()
-			if strings.Contains(errGen.Error(), "429") || strings.Contains(errGen.Error(), "Quota") {
-				errMsg = "Hệ thống AI đang quá tải, vui lòng thử lại sau."
-			}
-			db.SaveMessage(user.UserID, false, errMsg)
-			json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "reply": errMsg})
+	// API Polling trạng thái tin nhắn
+	http.HandleFunc("/api/chat/status", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		user, errAuth := getAuthUser(r)
+		if errAuth != nil {
+			http.Error(w, `{"error": "Unauthorized"}`, http.StatusUnauthorized)
 			return
 		}
 
-		var replyText string
-		for _, part := range resp.Candidates[0].Content.Parts {
-			replyText = fmt.Sprintf("%v", part)
-		}
-
-		// Dọn dẹp sơ nếu AI vẫn cố chấp trả về markdown
-		replyText = strings.TrimSpace(replyText)
-		replyText = strings.TrimPrefix(replyText, "```json\n")
-		replyText = strings.TrimPrefix(replyText, "```json")
-		replyText = strings.TrimSuffix(replyText, "\n```")
-		replyText = strings.TrimSuffix(replyText, "```")
-
-		// Dùng regex để xóa triệt để dấu phẩy thừa trước ngoặc đóng (trailing commas)
-		re := regexp.MustCompile(`,\s*([\]}])`)
-		replyText = re.ReplaceAllString(replyText, "$1")
-
-		exps, errParse := tools.ParseExpensesJSON(replyText)
-		if errParse != nil {
-			errMsg := "Lỗi đọc JSON: " + errParse.Error()
-			db.SaveMessage(user.UserID, false, errMsg)
-			json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "reply": errMsg})
+		msgIDStr := r.URL.Query().Get("id")
+		msgID, err := strconv.Atoi(msgIDStr)
+		if err != nil {
+			http.Error(w, `{"error": "Invalid ID"}`, http.StatusBadRequest)
 			return
 		}
 
-		replyStr := "✅ Đã ghi vào sổ:\n"
-		totalAdded := 0
-		var finalExps []db.Expense
-		for _, exp := range exps {
-			dbExp := db.Expense{
-				UserID:      user.UserID,
-				Date:        exp.Date,
-				Type:        exp.Type,
-				Amount:      exp.Amount,
-				Category:    exp.Category,
-				Description: exp.Description,
-			}
-			errSheet := db.AddExpense(user.UserID, &dbExp)
-			if errSheet != nil {
-				continue
-			}
-			finalExps = append(finalExps, dbExp)
-			replyStr += fmt.Sprintf("- [%s] %s - %d đ (%s)\n", exp.Type, exp.Description, exp.Amount, exp.Category)
-			totalAdded += exp.Amount
+		msg, err := db.GetMessageByID(msgID)
+		if err != nil {
+			http.Error(w, `{"error": "Not found"}`, http.StatusNotFound)
+			return
 		}
-		replyStr += fmt.Sprintf("\n💰 Tổng cộng: %d đ", totalAdded)
 
-		db.SaveMessage(user.UserID, false, replyStr)
-		json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "reply": replyStr, "expenses": finalExps})
+		if msg.UserID != user.UserID && user.Role != "admin" {
+			http.Error(w, `{"error": "Forbidden"}`, http.StatusForbidden)
+			return
+		}
+
+		json.NewEncoder(w).Encode(msg)
 	})
 
 	// History API

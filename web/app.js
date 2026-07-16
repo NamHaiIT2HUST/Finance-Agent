@@ -630,7 +630,7 @@ chatForm.addEventListener('submit', async (e) => {
     chatInput.value = '';
     removeImage();
     
-    appendMessage("⏳ AI đang ghi sổ...", false);
+    appendMessage("⏳ Đang xếp hàng chờ xử lý...", false);
     const typingMsg = chatHistory.lastElementChild;
 
     try {
@@ -648,15 +648,36 @@ chatForm.addEventListener('submit', async (e) => {
         }
 
         const data = await res.json();
-        typingMsg.remove();
         
-        if (data.success) {
-            appendMessage(data.reply, false);
-            if (data.expenses && data.expenses.length > 0) {
-                expenses = [...expenses, ...data.expenses];
-                updateDashboard();
-            }
+        if (data.success && data.message_id) {
+            const p = typingMsg.querySelector('p');
+            if (p) p.innerHTML = "⏳ AI đang phân tích (Bạn đang ở trong hàng đợi)...";
+            
+            // Bắt đầu Polling 3 giây/lần
+            const pollInterval = setInterval(async () => {
+                try {
+                    const statusRes = await fetch(`/api/chat/status?id=${data.message_id}`, {
+                        headers: { 'Authorization': 'Bearer ' + token }
+                    });
+                    const statusData = await statusRes.json();
+                    
+                    if (statusData.status === 'completed') {
+                        clearInterval(pollInterval);
+                        typingMsg.remove();
+                        appendMessage(statusData.text, false);
+                        // Cập nhật lại UI Dashboard
+                        loadDashboardData();
+                    } else if (statusData.status === 'error') {
+                        clearInterval(pollInterval);
+                        typingMsg.remove();
+                        appendMessage(statusData.text || "❌ Có lỗi xảy ra", false);
+                    }
+                } catch (e) {
+                    console.error("Lỗi mạng khi polling:", e);
+                }
+            }, 3000);
         } else {
+            typingMsg.remove();
             appendMessage(data.reply || "❌ Có lỗi xảy ra", false);
         }
     } catch (err) {

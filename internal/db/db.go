@@ -29,6 +29,7 @@ type Message struct {
 	UserID    int       `json:"user_id" gorm:"index"`
 	IsUser    bool      `json:"is_user"` // true for user, false for AI
 	Text      string    `json:"text"`
+	Status    string    `json:"status" gorm:"default:'completed'"` // pending, completed, error
 	CreatedAt time.Time `json:"created_at" gorm:"autoCreateTime"`
 }
 
@@ -172,13 +173,28 @@ func GetExpensesByUser(userID int) ([]Expense, error) {
 }
 
 // Message Methods
-func SaveMessage(userID int, isUser bool, text string) error {
+func SaveMessage(userID int, isUser bool, text string, status string) (Message, error) {
+	if status == "" {
+		status = "completed"
+	}
 	msg := Message{
 		UserID: userID,
 		IsUser: isUser,
 		Text:   text,
+		Status: status,
 	}
-	return DB.Create(&msg).Error
+	err := DB.Create(&msg).Error
+	return msg, err
+}
+
+func UpdateMessage(id int, text string, status string) error {
+	return DB.Model(&Message{}).Where("id = ?", id).Updates(map[string]interface{}{"text": text, "status": status}).Error
+}
+
+func GetMessageByID(id int) (Message, error) {
+	var msg Message
+	err := DB.First(&msg, id).Error
+	return msg, err
 }
 
 func GetMessagesByUser(userID int) ([]Message, error) {
