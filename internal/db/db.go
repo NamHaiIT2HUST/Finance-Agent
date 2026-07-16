@@ -191,6 +191,13 @@ func UpdateMessage(id int, text string, status string) error {
 	return DB.Model(&Message{}).Where("id = ?", id).Updates(map[string]interface{}{"text": text, "status": status}).Error
 }
 
+func FailPendingMessages() {
+	DB.Model(&Message{}).Where("status = ?", "pending").Updates(map[string]interface{}{
+		"status": "error",
+		"text":   "❌ Quá trình phân tích bị gián đoạn do máy chủ khởi động lại. Vui lòng gửi lại.",
+	})
+}
+
 func GetMessageByID(id int) (Message, error) {
 	var msg Message
 	err := DB.First(&msg, id).Error

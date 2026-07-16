@@ -230,8 +230,9 @@ func main() {
 		log.Println("Lưu ý: Không tìm thấy file .env")
 	}
 
-	// Initialize SQLite Database
+	// Initialize Database
 	db.InitDB("./finance.db")
+	db.FailPendingMessages() // Dọn dẹp các Job bị kẹt do server restart
 
 	// Parse API Keys từ biến môi trường (Hỗ trợ cấu hình nhiều key để xoay vòng)
 	keyStr := os.Getenv("GEMINI_API_KEY")
