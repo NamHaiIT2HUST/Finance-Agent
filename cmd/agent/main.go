@@ -61,6 +61,7 @@ type ChatJob struct {
 	UserText    string
 	PromptParts []genai.Part
 	AIMessageID int // ID của tin nhắn chờ (pending) trong Database
+	RetryCount  int // Số lần đã thử lại do lỗi Quota
 }
 
 var jobQueue = make(chan ChatJob, 1000)
@@ -141,8 +142,13 @@ TUYỆT ĐỐI trả về mảng JSON hợp lệ. Không giải thích gì thêm
 		errMsg := "❌ Lỗi AI: " + errGen.Error()
 		// Nếu hết quota thật sự từ Google, ta sẽ ngủ 20s và Đẩy lại vào Hàng đợi để nó thử lại cho đến khi thành công!
 		if strings.Contains(errGen.Error(), "429") || strings.Contains(errGen.Error(), "Quota") {
-			log.Println("Hệ thống Google AI đang tạm đầy, hệ thống tự động Sleep 20s và Retry lại...")
+			if job.RetryCount >= 2 {
+				db.UpdateMessage(job.AIMessageID, "❌ Hệ thống AI đang từ chối phục vụ (Có thể đã hết Quota trong ngày). Vui lòng thử lại sau.", "error")
+				return
+			}
+			log.Println("Hệ thống Google AI đang tạm đầy, tự động Sleep 20s và Retry lại...")
 			time.Sleep(20 * time.Second)
+			job.RetryCount++
 			jobQueue <- job // Push back to queue!
 			return
 		}
