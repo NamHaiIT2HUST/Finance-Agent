@@ -129,6 +129,8 @@ TUYỆT ĐỐI trả về mảng JSON hợp lệ. Không giải thích gì thêm
 		waitGlobalRateLimit() // Điều tiết 15 RPM ở đây!
 		resp, errGen = model.GenerateContent(ctx, job.PromptParts...)
 		client.Close()
+		
+		db.IncrementQuotaUsage(errGen == nil)
 
 		if errGen == nil {
 			break
@@ -520,6 +522,22 @@ func main() {
 			}
 			json.NewEncoder(w).Encode(map[string]bool{"success": true})
 		}
+	})
+
+	http.HandleFunc("/api/admin/system_stats", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		user, err := getAuthUser(r)
+		if err != nil || user.Role != "admin" {
+			http.Error(w, `{"error": "Forbidden"}`, http.StatusForbidden)
+			return
+		}
+
+		stats, err := db.GetSystemStats()
+		if err != nil {
+			http.Error(w, `{"error": "Lỗi hệ thống"}`, http.StatusInternalServerError)
+			return
+		}
+		json.NewEncoder(w).Encode(stats)
 	})
 
 	http.Handle("/", http.FileServer(http.Dir("./web")))

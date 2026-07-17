@@ -43,6 +43,12 @@ type Expense struct {
 	Description string `json:"description"`
 }
 
+type QuotaLog struct {
+	Date           string `json:"date" gorm:"primaryKey"`
+	ApiRequests    int    `json:"api_requests"`
+	FailedRequests int    `json:"failed_requests"`
+}
+
 // UserStat is for Admin Dashboard
 type UserStat struct {
 	ID       int    `json:"id"`
@@ -72,7 +78,7 @@ func InitDB(filepath string) {
 	}
 
 	// Tự động tạo/cập nhật bảng
-	err = DB.AutoMigrate(&User{}, &Expense{}, &Message{})
+	err = DB.AutoMigrate(&User{}, &Expense{}, &Message{}, &QuotaLog{})
 	if err != nil {
 		log.Fatal("Lỗi Migrate DB:", err)
 	}
@@ -208,4 +214,37 @@ func GetMessagesByUser(userID int) ([]Message, error) {
 	var messages []Message
 	err := DB.Where("user_id = ?", userID).Order("created_at ASC").Find(&messages).Error
 	return messages, err
+}
+
+// System Stats Methods
+func IncrementQuotaUsage(success bool) {
+	today := time.Now().Format("2006-01-02")
+	var log QuotaLog
+	err := DB.FirstOrCreate(&log, QuotaLog{Date: today}).Error
+	if err == nil {
+		if success {
+			DB.Model(&log).Update("api_requests", gorm.Expr("api_requests + ?", 1))
+		} else {
+			DB.Model(&log).Update("failed_requests", gorm.Expr("failed_requests + ?", 1))
+		}
+	}
+}
+
+type SystemStatsData struct {
+	TotalUsers    int64      `json:"total_users"`
+	TotalMessages int64      `json:"total_messages"`
+	TotalPrompts  int64      `json:"total_prompts"`
+	TodayQuota    QuotaLog   `json:"today_quota"`
+}
+
+func GetSystemStats() (SystemStatsData, error) {
+	var stats SystemStatsData
+	today := time.Now().Format("2006-01-02")
+
+	DB.Model(&User{}).Count(&stats.TotalUsers)
+	DB.Model(&Message{}).Count(&stats.TotalMessages)
+	DB.Model(&Message{}).Where("is_user = ?", true).Count(&stats.TotalPrompts)
+	DB.FirstOrCreate(&stats.TodayQuota, QuotaLog{Date: today})
+
+	return stats, nil
 }

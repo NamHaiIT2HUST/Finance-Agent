@@ -167,6 +167,7 @@ function switchTab(tabId, event) {
         document.getElementById('dashboardTab').style.display = 'none';
         document.getElementById('statsTab').style.display = 'none';
         document.getElementById('adminTab').style.display = 'none';
+        document.getElementById('systemStatsTab').style.display = 'none';
         
         if (tabId === 'chat') {
             document.getElementById('dashboardTab').style.display = 'flex'; // Mặc định nếu click chat ở đâu đó
@@ -186,6 +187,7 @@ function switchTab(tabId, event) {
     }
 
     if (tabId === 'admin') fetchAdminData();
+    if (tabId === 'systemStats') fetchSystemStats();
     if (tabId === 'stats') {
         initStatsFilters();
         updateStats();
@@ -435,6 +437,50 @@ async function deleteUser(id) {
         }
     } catch (e) {
         alert('Lỗi kết nối máy chủ');
+    }
+}
+
+async function fetchSystemStats() {
+    const token = localStorage.getItem('jwt_token');
+    try {
+        const res = await fetch('/api/admin/system_stats', {
+            headers: { 'Authorization': 'Bearer ' + token }
+        });
+        const data = await res.json();
+        
+        document.getElementById('sysTotalUsers').innerText = data.total_users || 0;
+        document.getElementById('sysTotalMessages').innerText = data.total_messages || 0;
+        document.getElementById('sysTotalPrompts').innerText = data.total_prompts || 0;
+        
+        const q = data.today_quota;
+        let apiUsed = 0;
+        let apiFailed = 0;
+        if (q && q.date) {
+            apiUsed = q.api_requests;
+            apiFailed = q.failed_requests;
+            document.getElementById('sysQuotaDate').innerText = q.date;
+        } else {
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('sysQuotaDate').innerText = today;
+        }
+        
+        const limit = 1500;
+        const percent = Math.min((apiUsed / limit) * 100, 100);
+        
+        document.getElementById('sysQuotaUsed').innerText = `${apiUsed} / ${limit} (${percent.toFixed(1)}%)`;
+        document.getElementById('sysQuotaFailed').innerText = apiFailed;
+        
+        const bar = document.getElementById('sysQuotaBar');
+        bar.style.width = percent + '%';
+        if (percent > 90) {
+            bar.style.background = 'linear-gradient(90deg, #ef4444, #b91c1c)';
+        } else if (percent > 70) {
+            bar.style.background = 'linear-gradient(90deg, #f59e0b, #d97706)';
+        } else {
+            bar.style.background = 'linear-gradient(90deg, #3b82f6, #8b5cf6)';
+        }
+    } catch (e) {
+        console.error('Lỗi lấy system stats', e);
     }
 }
 

@@ -47,6 +47,7 @@
                 <button class="nav-btn active" onclick="switchTab('dashboard', event)" data-tab="dashboard">📊 Tổng quan</button>
                 <button class="nav-btn" onclick="switchTab('stats', event)" data-tab="stats">📈 Thống kê</button>
                 <button class="nav-btn admin-only" id="navAdminBtn" onclick="switchTab('admin', event)" data-tab="admin" style="display: none;">👑 Quản lý</button>
+                <button class="nav-btn admin-only" id="navSystemBtn" onclick="switchTab('systemStats', event)" data-tab="systemStats" style="display: none;">⚙️ Hệ thống</button>
             </div>
             <div class="nav-actions">
                 <button class="icon-btn" id="themeToggle" title="Chế độ Tối/Sáng">🌙</button>
@@ -58,8 +59,9 @@
         <div class="mobile-tabs" style="overflow-x: auto; white-space: nowrap; padding-bottom: 5px;">
             <button class="tab-btn active" style="flex-shrink: 0;" onclick="switchTab('dashboard', event)" data-tab="dashboard">📊 Tổng quan</button>
             <button class="tab-btn" style="flex-shrink: 0;" onclick="switchTab('stats', event)" data-tab="stats">📈 Thống kê</button>
-            <button class="tab-btn" style="flex-shrink: 0;" onclick="switchTab('chat', event)" data-tab="chat">💬 Trợ lý AI</button>
-            <button class="tab-btn admin-only" style="flex-shrink: 0; display: none;" onclick="switchTab('admin', event)" data-tab="admin">👑 Quản lý</button>
+            <button class="tab-btn" style="flex-shrink: 0;" onclick="switchTab('chat', event)" data-tab="chat">💬 Chat AI</button>
+            <button class="tab-btn admin-only" id="mobileAdminBtn" style="flex-shrink: 0; display: none;" onclick="switchTab('admin', event)" data-tab="admin">👑 Quản lý</button>
+            <button class="tab-btn admin-only" id="mobileSystemBtn" style="flex-shrink: 0; display: none;" onclick="switchTab('systemStats', event)" data-tab="systemStats">⚙️ Hệ thống</button>
             <button class="tab-btn logout-tab" style="flex-shrink: 0;" onclick="logout()">🚪 Thoát</button>
         </div>
 
@@ -146,6 +148,51 @@
                         <h2>Danh sách Tài khoản</h2>
                     </div>
                     <div id="adminUserList" class="transactions-list"></div>
+                </section>
+            </div>
+
+            <!-- System Stats Interface -->
+            <div id="systemStatsTab" class="admin-panel" style="display: none;">
+                <header class="glass-panel header">
+                    <h2>⚙️ Giám sát Hệ thống</h2>
+                    <button class="reload-btn" onclick="fetchSystemStats()">🔄 Cập nhật</button>
+                </header>
+                
+                <section class="glass-panel transactions-section">
+                    <div class="section-header">
+                        <h2>Tổng quan Dữ liệu</h2>
+                    </div>
+                    <div style="display: flex; gap: 15px; flex-wrap: wrap; margin-bottom: 20px;">
+                        <div class="summary-card" style="flex: 1; min-width: 150px; background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.3);">
+                            <div class="card-title">TỔNG NGƯỜI DÙNG</div>
+                            <div class="card-value" id="sysTotalUsers" style="color: #60a5fa;">0</div>
+                        </div>
+                        <div class="summary-card" style="flex: 1; min-width: 150px; background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3);">
+                            <div class="card-title">TỔNG TIN NHẮN (Tất cả)</div>
+                            <div class="card-value" id="sysTotalMessages" style="color: #34d399;">0</div>
+                        </div>
+                        <div class="summary-card" style="flex: 1; min-width: 150px; background: rgba(139, 92, 246, 0.1); border: 1px solid rgba(139, 92, 246, 0.3);">
+                            <div class="card-title">LƯỢT YÊU CẦU AI (PROMPTS)</div>
+                            <div class="card-value" id="sysTotalPrompts" style="color: #a78bfa;">0</div>
+                        </div>
+                    </div>
+                    
+                    <div class="section-header">
+                        <h2>Giám sát Quota AI Hôm Nay (<span id="sysQuotaDate"></span>)</h2>
+                    </div>
+                    <div class="summary-card" style="background: rgba(255, 255, 255, 0.02); margin-top: 10px;">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+                            <span>API Requests Đã dùng:</span>
+                            <span style="font-weight: bold; color: #fff;" id="sysQuotaUsed">0 / 1500 (0%)</span>
+                        </div>
+                        <div style="width: 100%; background-color: rgba(255,255,255,0.1); border-radius: 10px; height: 20px; overflow: hidden; position: relative;">
+                            <div id="sysQuotaBar" style="height: 100%; background: linear-gradient(90deg, #3b82f6, #8b5cf6); width: 0%; transition: width 0.5s ease;"></div>
+                        </div>
+                        <p style="margin-top: 15px; font-size: 0.9em; color: #9ca3af;">
+                            * Nếu thanh tiến trình đạt 100%, hệ thống AI sẽ tạm thời ngừng hoạt động cho đến ngày hôm sau. Quota hiện tại giới hạn ở 1500 RPM.
+                            <br>❌ Số lượt gửi bị từ chối/lỗi trong ngày: <span id="sysQuotaFailed" style="color: #ef4444; font-weight: bold;">0</span>
+                        </p>
+                    </div>
                 </section>
             </div>
 
