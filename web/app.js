@@ -708,6 +708,34 @@ function removeImage() {
     imagePreview.style.display = 'none';
 }
 
+let currentChatMode = 'bookkeeper';
+function setChatMode(mode) {
+    currentChatMode = mode;
+    const btnBook = document.getElementById('btnModeBookkeeper');
+    const btnAdv = document.getElementById('btnModeAdvisor');
+    
+    if (mode === 'bookkeeper') {
+        btnBook.style.background = 'var(--bg-glass)';
+        btnBook.style.color = 'var(--text-primary)';
+        btnAdv.style.background = 'transparent';
+        btnAdv.style.color = 'var(--text-secondary)';
+        
+        // Hiện nút upload ảnh
+        document.querySelector('.upload-btn').style.display = 'inline-block';
+        document.getElementById('chatInput').placeholder = 'Nhắn tin (VD: Mua trà sữa 50k)...';
+    } else {
+        btnAdv.style.background = 'var(--bg-glass)';
+        btnAdv.style.color = 'var(--text-primary)';
+        btnBook.style.background = 'transparent';
+        btnBook.style.color = 'var(--text-secondary)';
+        
+        // Ẩn nút upload ảnh (Tư vấn viên không đọc hóa đơn)
+        document.querySelector('label[for="imageUpload"]').style.display = 'none';
+        removeImage();
+        document.getElementById('chatInput').placeholder = 'Hỏi tư vấn (VD: Tôi có tiêu hoang quá không?)...';
+    }
+}
+
 chatForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const text = chatInput.value.trim();
@@ -720,6 +748,7 @@ chatForm.addEventListener('submit', async (e) => {
     
     const formData = new FormData();
     formData.append('text', text);
+    formData.append('mode', currentChatMode);
     if (selectedFile) formData.append('image', selectedFile);
 
     chatInput.value = '';

@@ -114,6 +114,11 @@
                     <h2>🤖 Trợ lý AI</h2>
                     <button class="reload-btn" onclick="clearChat()">🧹 Dọn tin nhắn</button>
                 </header>
+
+                <div class="chat-mode-toggle" style="display: flex; gap: 10px; margin-bottom: 10px;">
+                    <button id="btnModeBookkeeper" class="mode-btn active" onclick="setChatMode('bookkeeper')" style="flex: 1; padding: 8px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--bg-glass); color: var(--text-primary); cursor: pointer; transition: all 0.3s;">📝 Ghi sổ</button>
+                    <button id="btnModeAdvisor" class="mode-btn" onclick="setChatMode('advisor')" style="flex: 1; padding: 8px; border-radius: 8px; border: 1px solid var(--border-color); background: transparent; color: var(--text-secondary); cursor: pointer; transition: all 0.3s;">🧑‍💼 Tư vấn</button>
+                </div>
                 
                 <div id="chatHistory" class="chat-history">
                     <div class="message ai-message">

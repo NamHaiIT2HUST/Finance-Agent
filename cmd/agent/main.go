@@ -62,6 +62,7 @@ type ChatJob struct {
 	PromptParts []genai.Part
 	AIMessageID int // ID của tin nhắn chờ (pending) trong Database
 	RetryCount  int // Số lần đã thử lại do lỗi Quota
+	Mode        string // bookkeeper hoặc advisor
 }
 
 var jobQueue = make(chan ChatJob, 1000)
@@ -91,6 +92,17 @@ Nhiệm vụ: Phân tích và CHỈ trả về một MẢNG (ARRAY) JSON có cá
 - "description" (Tóm tắt ngắn gọn, có ghi chú ngoại tệ nếu có).
 Ví dụ: [{"date": "%s", "type": "Chi", "amount": 10000, "category": "Hóa đơn & Tiện ích", "description": "Đóng tiền nước"}]
 TUYỆT ĐỐI trả về mảng JSON hợp lệ. Không giải thích gì thêm.`, currentDate, currentDate, currentDate)
+
+	if job.Mode == "advisor" {
+		expenses, _ := db.GetRecentExpenses(job.UserID, 50)
+		expensesJSON, _ := json.Marshal(expenses)
+		promptText = fmt.Sprintf(`Hôm nay là %s. Bạn là Chuyên gia Tư vấn Tài chính AI tận tâm.
+Dưới đây là dữ liệu 50 giao dịch thu/chi gần nhất của tôi:
+%s
+Người dùng sẽ hỏi bạn lời khuyên hoặc thắc mắc. 
+Dựa vào dữ liệu trên, hãy tư vấn thật hữu ích, ngắn gọn, phân tích logic và thân thiện (sử dụng emoji).
+LƯU Ý QUAN TRỌNG: TRẢ LỜI BẰNG VĂN BẢN (TEXT) BÌNH THƯỜNG, KHÔNG ĐƯỢC TRẢ VỀ JSON.`, currentDate, string(expensesJSON))
+	}
 
 	var resp *genai.GenerateContentResponse
 	var errGen error
@@ -165,6 +177,12 @@ TUYỆT ĐỐI trả về mảng JSON hợp lệ. Không giải thích gì thêm
 	}
 
 	replyText = strings.TrimSpace(replyText)
+	
+	if job.Mode == "advisor" {
+		db.UpdateMessage(job.AIMessageID, replyText, "completed")
+		return
+	}
+
 	replyText = strings.TrimPrefix(replyText, "```json\n")
 	replyText = strings.TrimPrefix(replyText, "```json")
 	replyText = strings.TrimSuffix(replyText, "\n```")
@@ -398,12 +416,18 @@ func main() {
 		// Lưu một tin nhắn AI giả vào DB trạng thái pending
 		pendingMsg, _ := db.SaveMessage(user.UserID, false, "⏳ AI đang phân tích (Bạn đang ở trong hàng đợi)...", "pending")
 
+		mode := r.FormValue("mode")
+		if mode == "" {
+			mode = "bookkeeper"
+		}
+
 		// Đẩy vào hàng đợi để worker xử lý (non-blocking)
 		jobQueue <- ChatJob{
 			UserID:      user.UserID,
 			UserText:    userText,
 			PromptParts: promptParts,
 			AIMessageID: pendingMsg.ID,
+			Mode:        mode,
 		}
 
 		// Trả về ngay cho Frontend

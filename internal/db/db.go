@@ -216,6 +216,12 @@ func GetMessagesByUser(userID int) ([]Message, error) {
 	return messages, err
 }
 
+func GetRecentExpenses(userID int, limit int) ([]Expense, error) {
+	var expenses []Expense
+	err := DB.Where("user_id = ?", userID).Order("id DESC").Limit(limit).Find(&expenses).Error
+	return expenses, err
+}
+
 // System Stats Methods
 func IncrementQuotaUsage(success bool) {
 	today := time.Now().Format("2006-01-02")
