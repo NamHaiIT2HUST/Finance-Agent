@@ -123,20 +123,22 @@ LƯU Ý QUAN TRỌNG: TRẢ LỜI BẰNG VĂN BẢN (TEXT) BÌNH THƯỜNG, KHÔ
 		model.SystemInstruction = &genai.Content{
 			Parts: []genai.Part{genai.Text(promptText)},
 		}
-		model.ResponseMIMEType = "application/json"
-		model.ResponseSchema = &genai.Schema{
-			Type: genai.TypeArray,
-			Items: &genai.Schema{
-				Type: genai.TypeObject,
-				Properties: map[string]*genai.Schema{
-					"date":        {Type: genai.TypeString},
-					"type":        {Type: genai.TypeString},
-					"amount":      {Type: genai.TypeInteger},
-					"category":    {Type: genai.TypeString},
-					"description": {Type: genai.TypeString},
+		if job.Mode != "advisor" {
+			model.ResponseMIMEType = "application/json"
+			model.ResponseSchema = &genai.Schema{
+				Type: genai.TypeArray,
+				Items: &genai.Schema{
+					Type: genai.TypeObject,
+					Properties: map[string]*genai.Schema{
+						"date":        {Type: genai.TypeString},
+						"type":        {Type: genai.TypeString},
+						"amount":      {Type: genai.TypeInteger},
+						"category":    {Type: genai.TypeString},
+						"description": {Type: genai.TypeString},
+					},
+					Required: []string{"date", "type", "amount", "category", "description"},
 				},
-				Required: []string{"date", "type", "amount", "category", "description"},
-			},
+			}
 		}
 
 		waitGlobalRateLimit() // Điều tiết 15 RPM ở đây!
