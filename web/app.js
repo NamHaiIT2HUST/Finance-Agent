@@ -817,6 +817,66 @@ themeToggle.addEventListener('click', () => {
 // Khởi tạo ban đầu
 checkLogin();
 
+// ----------------------
+// Voice Input Logic
+// ----------------------
+let recognition;
+let isRecording = false;
+
+if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    recognition = new SpeechRecognition();
+    recognition.lang = 'vi-VN';
+    recognition.continuous = false;
+    recognition.interimResults = false;
+
+    recognition.onstart = function() {
+        isRecording = true;
+        const voiceBtn = document.getElementById('voiceBtn');
+        if (voiceBtn) {
+            voiceBtn.style.color = '#ef4444'; // Đỏ để báo đang thu
+            voiceBtn.classList.add('recording-pulse');
+        }
+        document.getElementById('chatInput').placeholder = 'Đang nghe...';
+    };
+
+    recognition.onresult = function(event) {
+        const transcript = event.results[0][0].transcript;
+        document.getElementById('chatInput').value += transcript + ' ';
+    };
+
+    recognition.onerror = function(event) {
+        console.error('Speech recognition error', event.error);
+        stopRecording();
+    };
+
+    recognition.onend = function() {
+        stopRecording();
+    };
+}
+
+function stopRecording() {
+    isRecording = false;
+    const voiceBtn = document.getElementById('voiceBtn');
+    if (voiceBtn) {
+        voiceBtn.style.color = '';
+        voiceBtn.classList.remove('recording-pulse');
+    }
+    document.getElementById('chatInput').placeholder = 'Nhắn tin (VD: Mua trà sữa 50k)...';
+}
+
+function toggleVoice() {
+    if (!recognition) {
+        alert('Trình duyệt của bạn không hỗ trợ Nhận diện giọng nói. Vui lòng dùng Chrome hoặc Safari mới nhất.');
+        return;
+    }
+    if (isRecording) {
+        recognition.stop();
+    } else {
+        recognition.start();
+    }
+}
+
 // Hàm dọn dẹp tin nhắn
 function clearChat() {
     const chatHistory = document.getElementById('chatHistory');
