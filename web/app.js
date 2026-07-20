@@ -234,6 +234,7 @@ function updateStats() {
     let sIncome = 0;
     let sExpense = 0;
     const sCategory = {};
+    const catTransactions = {};
 
     filtered.forEach(exp => {
         if (exp.type === 'Thu' || exp.type === 'thu') {
@@ -241,6 +242,9 @@ function updateStats() {
         } else {
             sExpense += exp.amount;
             sCategory[exp.category] = (sCategory[exp.category] || 0) + exp.amount;
+            
+            if (!catTransactions[exp.category]) catTransactions[exp.category] = [];
+            catTransactions[exp.category].push(exp);
         }
     });
 
@@ -282,6 +286,51 @@ function updateStats() {
             }
         }
     });
+
+    // Cập nhật danh sách chi tiết danh mục
+    const breakdownList = document.getElementById('statsBreakdownList');
+    if (breakdownList) {
+        breakdownList.innerHTML = '';
+        if (Object.keys(sCategory).length === 0) {
+            breakdownList.innerHTML = '<p style="text-align:center; color:gray;">Chưa có dữ liệu</p>';
+        } else {
+            Object.keys(sCategory).sort((a, b) => sCategory[b] - sCategory[a]).forEach(cat => {
+                const catTotal = sCategory[cat];
+                const txs = catTransactions[cat];
+                
+                let txHtml = '';
+                txs.forEach(tx => {
+                    const d = new Date(tx.date);
+                    const dateStr = d.toLocaleDateString('vi-VN');
+                    txHtml += `
+                        <div style="display: flex; justify-content: space-between; font-size: 0.9em; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">
+                            <span style="color: #cbd5e1;">${dateStr} - ${tx.description}</span>
+                            <span style="color: #ef4444;">${formatVND(tx.amount)}</span>
+                        </div>
+                    `;
+                });
+
+                const catId = 'cat_' + Math.random().toString(36).substr(2, 9);
+                breakdownList.innerHTML += `
+                    <div class="transaction-card" style="flex-direction: column; align-items: stretch; cursor: pointer;" onclick="document.getElementById('${catId}').style.display = document.getElementById('${catId}').style.display === 'none' ? 'block' : 'none'">
+                        <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <div class="tx-icon" style="background: rgba(255,255,255,0.1);">📂</div>
+                                <div class="tx-info">
+                                    <div class="tx-desc">${cat}</div>
+                                    <div class="tx-date" style="color: #94a3b8; font-size: 0.85em; margin-top: 4px;">${txs.length} giao dịch (Bấm để xem)</div>
+                                </div>
+                            </div>
+                            <div class="tx-amount negative">${formatVND(catTotal)}</div>
+                        </div>
+                        <div id="${catId}" style="display: none; margin-top: 15px; background: rgba(0,0,0,0.2); padding: 10px 15px; border-radius: 8px;">
+                            ${txHtml}
+                        </div>
+                    </div>
+                `;
+            });
+        }
+    }
 }
 
 const loadChatHistory = async (targetUserId = null) => {
