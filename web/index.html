@@ -135,8 +135,10 @@
                         <label for="imageUpload" class="upload-btn" title="Tải ảnh hóa đơn">📸</label>
                         <input type="file" id="imageUpload" accept="image/*" style="display: none;" onchange="previewImage(event)">
                         
-                        <input type="text" id="chatInput" placeholder="Nhắn tin (VD: Mua trà sữa 50k)..." autocomplete="off">
-                        <button type="button" id="voiceBtn" class="upload-btn" onclick="toggleVoice()" title="Nhập bằng giọng nói">🎤</button>
+                        <div class="input-wrapper" style="position: relative; flex: 1; display: flex; min-width: 0;">
+                            <input type="text" id="chatInput" placeholder="Nhắn tin (VD: Mua trà sữa 50k)..." autocomplete="off" style="width: 100%; padding-right: 45px;">
+                            <button type="button" id="voiceBtn" class="voice-btn-inside" onclick="toggleVoice()" title="Nhập bằng giọng nói">🎤</button>
+                        </div>
                         <button type="submit" class="send-btn">➤</button>
                     </form>
                 </div>

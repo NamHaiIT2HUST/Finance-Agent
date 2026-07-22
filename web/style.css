@@ -155,6 +155,7 @@ body {
 .upload-btn { font-size: 1.5rem; cursor: pointer; background: transparent; border: none; padding: 0; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .chat-form input[type="text"] { flex: 1; min-width: 0; padding: 12px; border-radius: 20px; border: 1px solid var(--glass-border); background: var(--bg-color); color: var(--text-primary); font-size: 1rem; transition: border-color 0.3s ease; }
 .chat-form input[type="text"]:focus { outline: none; border-color: var(--color-balance); }
+.voice-btn-inside { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: transparent; border: none; font-size: 1.3rem; cursor: pointer; padding: 5px; display: flex; align-items: center; justify-content: center; }
 .send-btn { background: var(--color-balance); color: white; border: none; width: 45px; height: 45px; flex-shrink: 0; border-radius: 50%; font-size: 1.2rem; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s ease; }
 .send-btn:hover { transform: scale(1.1); box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4); }
 .send-btn:active { transform: scale(0.95); }
